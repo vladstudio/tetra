@@ -1,12 +1,23 @@
 import ServiceManagement
 import SwiftUI
 
+@Observable
+@MainActor
+final class CommandState {
+    static let shared = CommandState()
+    var isRunning = false
+}
+
 @main
 struct TetraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @State private var commandState = CommandState.shared
 
-    private static let menuBarIcon: NSImage = {
-        if let url = Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+    private static let menuBarIcon = loadIcon("MenuBarIcon")
+    private static let thinkIcon = loadIcon("ThinkIcon")
+
+    private static func loadIcon(_ name: String) -> NSImage {
+        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
            let img = NSImage(contentsOf: url)
         {
             img.size = NSSize(width: 18, height: 18)
@@ -14,13 +25,13 @@ struct TetraApp: App {
             return img
         }
         return NSImage(systemSymbolName: "text.cursor", accessibilityDescription: "Tetra")!
-    }()
+    }
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
         } label: {
-            Image(nsImage: Self.menuBarIcon)
+            Image(nsImage: commandState.isRunning ? Self.thinkIcon : Self.menuBarIcon)
         }
     }
 }
@@ -152,6 +163,8 @@ struct MenuBarView: View {
                 NSSound.beep()
                 return
             }
+            CommandState.shared.isRunning = true
+            defer { CommandState.shared.isRunning = false }
             do {
                 let result = try await CommandRunner.shared.run(command: command, input: text)
                 TextInjector.inject(result)
