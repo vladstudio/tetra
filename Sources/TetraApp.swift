@@ -28,26 +28,37 @@ struct TetraApp: App {
 // MARK: - AppDelegate
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor static var previousApp: NSRunningApplication?
     private var server = TetraServer()
     private var hotkeyManager = HotkeyManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        CommandRunner.shared.createDefaults()
         let config = ConfigManager.shared.config
+
+        // Track the last non-Tetra frontmost app
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main) { notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            MainActor.assumeIsolated {
+                AppDelegate.previousApp = app
+            }
+        }
 
         // Start server
         server.start(port: UInt16(config.server.port))
 
         // Register hotkey
         HotkeyManager.onHotkey = {
-            DispatchQueue.main.async {
-                FunctionPickerPanel.shared.show()
-            }
+            PickerPanel.shared.show()
         }
         hotkeyManager.register(hotkey: config.hotkey)
 
         // Watch config for changes
         ConfigManager.shared.onChange = { [weak self] in
-            guard let self = self else { return }
+            guard let self else { return }
             let c = ConfigManager.shared.config
             self.server.stop()
             self.server.start(port: UInt16(c.server.port))
@@ -56,7 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Prompt for Accessibility permission
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        let opts = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)
     }
 }
@@ -69,11 +80,12 @@ struct MenuBarView: View {
     var body: some View {
         let config = ConfigManager.shared.config
 
-        Section("Functions") {
-            ForEach(Array(config.functions.keys).sorted(), id: \.self) { name in
-                let fn = config.functions[name]!
-                Text("\(name)  (\(fn.type))")
-                    .font(.system(.body, design: .monospaced))
+        Section("Commands") {
+            ForEach(CommandRunner.shared.listCommands(), id: \.self) { name in
+                Button(name) {
+                    transformSelection(command: name)
+                }
+                .font(.system(.body, design: .monospaced))
             }
         }
 
@@ -86,6 +98,10 @@ struct MenuBarView: View {
 
         Divider()
 
+        Button("Open Commands Folder...") {
+            NSWorkspace.shared.open(CommandRunner.shared.commandsDir)
+        }
+
         Button("Open Config...") {
             let path = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".tetra/config.json")
@@ -93,7 +109,7 @@ struct MenuBarView: View {
         }
 
         Toggle("Start at Login", isOn: $launchAtLogin)
-            .onChange(of: launchAtLogin) { on in
+            .onChange(of: launchAtLogin) { _, on in
                 do {
                     if on { try SMAppService.mainApp.register() }
                     else { try SMAppService.mainApp.unregister() }
@@ -105,5 +121,24 @@ struct MenuBarView: View {
         Divider()
 
         Button("Quit") { NSApp.terminate(nil) }
+    }
+
+    private func transformSelection(command: String) {
+        guard let app = AppDelegate.previousApp else { return }
+        app.activate()
+
+        Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let text = ContextCapture.captureSelected(), !text.isEmpty else { return }
+            do {
+                let result = try await CommandRunner.shared.run(command: command, input: text)
+                TextInjector.inject(result)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Command failed"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
     }
 }

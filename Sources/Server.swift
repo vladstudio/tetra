@@ -1,12 +1,16 @@
 import Foundation
 import Network
 
-class TetraServer {
+final class TetraServer: @unchecked Sendable {
     private var listener: NWListener?
 
     func start(port: UInt16) {
         do {
-            listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+                print("[tetra] Invalid port: \(port)")
+                return
+            }
+            listener = try NWListener(using: .tcp, on: nwPort)
         } catch {
             print("[tetra] Failed to start server: \(error)")
             return
@@ -31,13 +35,15 @@ class TetraServer {
             return
         }
         conn.start(queue: .global(qos: .userInitiated))
-        var buffer = Data()
 
-        func readMore() {
+        final class Buffer: @unchecked Sendable { var data = Data() }
+        let buffer = Buffer()
+
+        @Sendable func readMore() {
             conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-                if let data = data { buffer.append(data) }
+                if let data = data { buffer.data.append(data) }
 
-                if let req = self?.parseHTTP(buffer), self?.hasFullBody(buffer) == true {
+                if let req = self?.parseHTTP(buffer.data), self?.hasFullBody(buffer.data) == true {
                     self?.route(req, conn)
                 } else if !isComplete && error == nil {
                     readMore()
@@ -60,39 +66,41 @@ class TetraServer {
 
     // MARK: - HTTP parsing
 
-    private struct HTTPRequest {
+    private struct HTTPRequest: Sendable {
         let method: String
         let path: String
         let body: Data?
     }
 
-    private func parseHTTP(_ data: Data) -> HTTPRequest? {
-        guard let str = String(data: data, encoding: .utf8),
-              let headerEnd = str.range(of: "\r\n\r\n") else { return nil }
+    private static let headerSeparator = Data([0x0D, 0x0A, 0x0D, 0x0A]) // \r\n\r\n
 
-        let headerPart = String(str[str.startIndex..<headerEnd.lowerBound])
-        let lines = headerPart.components(separatedBy: "\r\n")
+    private func parseHTTP(_ data: Data) -> HTTPRequest? {
+        guard let sepRange = data.range(of: Self.headerSeparator) else { return nil }
+
+        let headerData = data[data.startIndex..<sepRange.lowerBound]
+        guard let headerStr = String(data: headerData, encoding: .utf8) else { return nil }
+        let lines = headerStr.components(separatedBy: "\r\n")
         guard let requestLine = lines.first else { return nil }
         let tokens = requestLine.split(separator: " ", maxSplits: 2)
         guard tokens.count >= 2 else { return nil }
 
-        let bodyStartOffset = str.distance(from: str.startIndex, to: headerEnd.upperBound)
-        let body = bodyStartOffset < data.count ? Data(data[bodyStartOffset...]) : nil
+        let bodyStart = sepRange.upperBound
+        let body = bodyStart < data.endIndex ? Data(data[bodyStart...]) : nil
 
         return HTTPRequest(method: String(tokens[0]), path: String(tokens[1]), body: body)
     }
 
     private func hasFullBody(_ data: Data) -> Bool {
-        guard let str = String(data: data, encoding: .utf8),
-              let headerEnd = str.range(of: "\r\n\r\n") else { return false }
+        guard let sepRange = data.range(of: Self.headerSeparator) else { return false }
 
-        let headerPart = String(str[str.startIndex..<headerEnd.lowerBound])
-        for line in headerPart.components(separatedBy: "\r\n") {
+        let headerData = data[data.startIndex..<sepRange.lowerBound]
+        guard let headerStr = String(data: headerData, encoding: .utf8) else { return false }
+
+        for line in headerStr.components(separatedBy: "\r\n") {
             if line.lowercased().hasPrefix("content-length:") {
                 let lenStr = line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
                 if let expected = Int(lenStr) {
-                    let bodyStart = str.distance(from: str.startIndex, to: headerEnd.upperBound)
-                    return data.count - bodyStart >= expected
+                    return data.endIndex - sepRange.upperBound >= expected
                 }
             }
         }
@@ -109,21 +117,21 @@ class TetraServer {
         }
 
         switch (req.method, req.path) {
-        case ("GET", "/functions"):
-            let names = Array(ConfigManager.shared.config.functions.keys).sorted()
+        case ("GET", "/commands"):
+            let names = CommandRunner.shared.listCommands()
             respond(conn, json: names)
 
         case ("POST", "/transform"):
             guard let body = req.body,
                   let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-                  let function = json["function"] as? String,
+                  let command = json["command"] as? String,
                   let text = json["text"] as? String else {
-                respond(conn, status: 400, json: ["error": "Missing 'function' or 'text'"])
+                respond(conn, status: 400, json: ["error": "Missing 'command' or 'text'"])
                 return
             }
             Task {
                 do {
-                    let result = try await TransformEngine.shared.transform(text: text, function: function)
+                    let result = try await CommandRunner.shared.run(command: command, input: text)
                     self.respond(conn, json: ["result": result])
                 } catch {
                     self.respond(conn, status: 500, json: ["error": error.localizedDescription])
@@ -137,7 +145,7 @@ class TetraServer {
 
     // MARK: - Response
 
-    private func respond(_ conn: NWConnection, status: Int = 200, json: Any) {
+    private func respond(_ conn: NWConnection, status: Int = 200, json: any Sendable) {
         let statusText: String = switch status {
         case 200: "OK"
         case 204: "No Content"

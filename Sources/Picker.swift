@@ -1,20 +1,18 @@
 import AppKit
 import SwiftUI
 
-class FunctionPickerPanel {
-    static let shared = FunctionPickerPanel()
+@MainActor
+class PickerPanel {
+    static let shared = PickerPanel()
 
     private var panel: NSPanel?
     private var capturedText: String?
-    private var previousApp: NSRunningApplication?
 
     func show() {
-        previousApp = NSWorkspace.shared.frontmostApplication
-
-        DispatchQueue.global().async {
-            let text = HotkeyManager.captureSelectedText()
-            DispatchQueue.main.async {
-                guard let text = text, !text.isEmpty else { return }
+        Task.detached {
+            let text = ContextCapture.captureSelected()
+            await MainActor.run {
+                guard let text, !text.isEmpty else { return }
                 self.capturedText = text
                 self.showPanel()
             }
@@ -24,14 +22,14 @@ class FunctionPickerPanel {
     private func showPanel() {
         dismiss()
 
-        let functions = Array(ConfigManager.shared.config.functions.keys).sorted()
-        guard !functions.isEmpty else { return }
+        let commands = CommandRunner.shared.listCommands()
+        guard !commands.isEmpty else { return }
 
         let state = PickerState()
         let pickerView = PickerView(
-            functions: functions,
+            commands: commands,
             state: state,
-            onSelect: { [weak self] fn in self?.executeTransform(function: fn, state: state) },
+            onSelect: { [weak self] cmd in self?.executeCommand(cmd, state: state) },
             onDismiss: { [weak self] in self?.dismiss() }
         )
 
@@ -54,33 +52,25 @@ class FunctionPickerPanel {
         p.backgroundColor = .clear
         p.contentView = hostingView
         p.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
 
         panel = p
     }
 
-    private func executeTransform(function: String, state: PickerState) {
+    private func executeCommand(_ command: String, state: PickerState) {
         guard let text = capturedText else { return }
         state.isLoading = true
 
         Task {
             do {
-                let result = try await TransformEngine.shared.transform(text: text, function: function)
-                await MainActor.run {
-                    self.dismiss()
-                    if let app = self.previousApp {
-                        app.activate()
-                    }
-                }
+                let result = try await CommandRunner.shared.run(command: command, input: text)
+                self.dismiss()
+                AppDelegate.previousApp?.activate()
                 try? await Task.sleep(nanoseconds: 150_000_000)
-                await MainActor.run {
-                    HotkeyManager.pasteText(result)
-                }
+                TextInjector.inject(result)
             } catch {
-                await MainActor.run {
-                    state.isLoading = false
-                    state.error = error.localizedDescription
-                }
+                state.isLoading = false
+                state.error = error.localizedDescription
             }
         }
     }
@@ -94,6 +84,7 @@ class FunctionPickerPanel {
 
 // MARK: - State
 
+@MainActor
 class PickerState: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
@@ -102,24 +93,23 @@ class PickerState: ObservableObject {
 // MARK: - SwiftUI View
 
 struct PickerView: View {
-    let functions: [String]
+    let commands: [String]
     @ObservedObject var state: PickerState
-    let onSelect: (String) -> Void
-    let onDismiss: () -> Void
+    let onSelect: @MainActor (String) -> Void
+    let onDismiss: @MainActor () -> Void
 
     @State private var search = ""
     @State private var selectedIndex = 0
     @State private var monitor: Any?
 
     var filtered: [String] {
-        if search.isEmpty { return functions }
-        return functions.filter { $0.localizedCaseInsensitiveContains(search) }
+        if search.isEmpty { return commands }
+        return commands.filter { $0.localizedCaseInsensitiveContains(search) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search field
-            TextField("Function...", text: $search)
+            TextField("Command...", text: $search)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .padding(10)
@@ -130,7 +120,7 @@ struct PickerView: View {
                 Spacer()
                 ProgressView()
                     .scaleEffect(0.8)
-                Text("Transforming...")
+                Text("Running...")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.top, 4)
@@ -159,7 +149,7 @@ struct PickerView: View {
                             .onTapGesture { onSelect(name) }
                     }
                     .listStyle(.plain)
-                    .onChange(of: selectedIndex) { idx in
+                    .onChange(of: selectedIndex) { _, idx in
                         if filtered.indices.contains(idx) {
                             withAnimation { proxy.scrollTo(filtered[idx]) }
                         }
@@ -171,7 +161,7 @@ struct PickerView: View {
         .background(.ultraThinMaterial)
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
-        .onChange(of: search) { _ in selectedIndex = 0 }
+        .onChange(of: search) { _, _ in selectedIndex = 0 }
     }
 
     private func installKeyMonitor() {
@@ -187,8 +177,8 @@ struct PickerView: View {
                 onDismiss()
                 return nil
             case 36: // return
-                if let fn = filtered.indices.contains(selectedIndex) ? filtered[selectedIndex] : nil {
-                    onSelect(fn)
+                if filtered.indices.contains(selectedIndex) {
+                    onSelect(filtered[selectedIndex])
                 }
                 return nil
             default:

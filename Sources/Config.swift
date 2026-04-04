@@ -1,17 +1,16 @@
 import Foundation
 
-struct TetraConfig: Codable {
+struct TetraConfig: Codable, Sendable {
     var server: ServerConfig = ServerConfig()
     var providers: [String: ProviderConfig] = [:]
-    var functions: [String: FunctionConfig] = [:]
     var hotkey: String = "ctrl+option+t"
 }
 
-struct ServerConfig: Codable {
+struct ServerConfig: Codable, Sendable {
     var port: Int = 24100
 }
 
-struct ProviderConfig: Codable {
+struct ProviderConfig: Codable, Sendable {
     var baseUrl: String
     var apiKey: String?
 
@@ -24,20 +23,7 @@ struct ProviderConfig: Codable {
     }
 }
 
-struct FunctionConfig: Codable {
-    var type: String // "builtin" or "llm"
-    // builtin
-    var transform: String?
-    // llm
-    var provider: String?
-    var model: String?
-    var system: String?
-    var prompt: String? // must contain {{text}}
-    var temperature: Double?
-    var maxTokens: Int?
-}
-
-class ConfigManager {
+class ConfigManager: @unchecked Sendable {
     static let shared = ConfigManager()
 
     private var _config: TetraConfig = TetraConfig()
@@ -52,7 +38,7 @@ class ConfigManager {
         return _config
     }
 
-    var onChange: (() -> Void)?
+    @MainActor var onChange: (@MainActor () -> Void)?
 
     private init() {
         configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".tetra")
@@ -79,11 +65,6 @@ class ConfigManager {
             server: ServerConfig(port: 24100),
             providers: [
                 "ollama": ProviderConfig(baseUrl: "http://localhost:11434/v1"),
-            ],
-            functions: [
-                "uppercase": FunctionConfig(type: "builtin", transform: "uppercase"),
-                "lowercase": FunctionConfig(type: "builtin", transform: "lowercase"),
-                "trim": FunctionConfig(type: "builtin", transform: "trim"),
             ]
         )
         let encoder = JSONEncoder()
@@ -94,13 +75,18 @@ class ConfigManager {
     }
 
     private func watchFile() {
+        // Watch the directory, not the file — editors that do atomic saves
+        // (write tmp + rename) invalidate the fd on the old file.
         let fd = open(configDir.path, O_EVTONLY)
         guard fd >= 0 else { return }
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .rename], queue: .main)
         source.setEventHandler { [weak self] in
-            self?.load()
-            self?.onChange?()
+            guard let self else { return }
+            self.load()
+            MainActor.assumeIsolated {
+                self.onChange?()
+            }
         }
         source.setCancelHandler { close(fd) }
         source.resume()

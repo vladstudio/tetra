@@ -1,10 +1,13 @@
 import AppKit
 import Carbon.HIToolbox
 
+@MainActor
 class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     static var onHotkey: (() -> Void)?
+
+    nonisolated init() {}
 
     func register(hotkey: String) {
         unregister()
@@ -35,7 +38,10 @@ class HotkeyManager {
         InstallEventHandler(
             GetApplicationEventTarget(),
             { (_, _, _) -> OSStatus in
-                HotkeyManager.onHotkey?()
+                // Carbon event handlers fire on the main thread
+                MainActor.assumeIsolated {
+                    HotkeyManager.onHotkey?()
+                }
                 return noErr
             },
             1, &eventType, nil, &handlerRef)
@@ -54,41 +60,6 @@ class HotkeyManager {
             RemoveEventHandler(ref)
             handlerRef = nil
         }
-    }
-
-    // MARK: - Clipboard capture (simulates Cmd+C)
-
-    static func captureSelectedText() -> String? {
-        let pasteboard = NSPasteboard.general
-        let oldCount = pasteboard.changeCount
-
-        simulateKeyCombo(keyCode: 0x08, flags: .maskCommand) // Cmd+C
-        Thread.sleep(forTimeInterval: 0.1)
-
-        guard pasteboard.changeCount != oldCount else { return nil }
-        return pasteboard.string(forType: .string)
-    }
-
-    // MARK: - Paste back (simulates Cmd+V)
-
-    static func pasteText(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        simulateKeyCombo(keyCode: 0x09, flags: .maskCommand) // Cmd+V
-    }
-
-    // MARK: - Key simulation
-
-    private static func simulateKeyCombo(keyCode: CGKeyCode, flags: CGEventFlags) {
-        let source = CGEventSource(stateID: .hidSystemState)
-        let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        down?.flags = flags
-        up?.flags = flags
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
     }
 
     // MARK: - Virtual key codes (US keyboard layout)
