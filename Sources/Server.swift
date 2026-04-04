@@ -7,19 +7,19 @@ final class TetraServer: @unchecked Sendable {
     func start(port: UInt16) {
         do {
             guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-                print("[tetra] Invalid port: \(port)")
+                print("[Tetra] Invalid port: \(port)")
                 return
             }
             listener = try NWListener(using: .tcp, on: nwPort)
         } catch {
-            print("[tetra] Failed to start server: \(error)")
+            print("[Tetra] Failed to start server: \(error)")
             return
         }
         listener?.newConnectionHandler = { [weak self] conn in
             self?.handleConnection(conn)
         }
         listener?.start(queue: .global(qos: .userInitiated))
-        print("[tetra] Server listening on port \(port)")
+        print("[Tetra] Server listening on port \(port)")
     }
 
     func stop() {

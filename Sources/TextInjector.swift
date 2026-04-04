@@ -4,13 +4,9 @@ import AppKit
 enum TextInjector {
     /// Inject text into the active app via clipboard paste (Cmd+V), then restore clipboard.
     static func inject(_ text: String) {
-        let pb = NSPasteboard.general
-        let savedItems = pb.pasteboardItems?.map { item in
-            item.types.compactMap { type in
-                item.data(forType: type).map { (type, $0) }
-            }
-        } ?? []
+        let snapshot = ClipboardSnapshot.save()
 
+        let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
 
@@ -26,14 +22,7 @@ enum TextInjector {
         // Restore clipboard after paste completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             MainActor.assumeIsolated {
-                if !savedItems.isEmpty {
-                    pb.clearContents()
-                    for itemData in savedItems {
-                        let item = NSPasteboardItem()
-                        for (type, data) in itemData { item.setData(data, forType: type) }
-                        pb.writeObjects([item])
-                    }
-                }
+                snapshot.restore()
             }
         }
     }

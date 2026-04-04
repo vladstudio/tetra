@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 enum ContextCapture {
     /// Capture selected text from the active app.
     /// Tries Accessibility API first (native apps), falls back to Cmd+C (Electron/web apps).
@@ -25,11 +26,7 @@ enum ContextCapture {
     private static func selectedViaClipboard() async -> String? {
         let pb = NSPasteboard.general
         let savedCount = pb.changeCount
-        let savedItems = pb.pasteboardItems?.map { item in
-            item.types.compactMap { type in
-                item.data(forType: type).map { (type, $0) }
-            }
-        } ?? []
+        let snapshot = ClipboardSnapshot.save()
 
         // Simulate Cmd+C
         let src = CGEventSource(stateID: .hidSystemState)
@@ -48,16 +45,7 @@ enum ContextCapture {
             return nil
         }
 
-        // Restore original clipboard
-        if !savedItems.isEmpty {
-            pb.clearContents()
-            for itemData in savedItems {
-                let item = NSPasteboardItem()
-                for (type, data) in itemData { item.setData(data, forType: type) }
-                pb.writeObjects([item])
-            }
-        }
-
+        snapshot.restore()
         return text
     }
 

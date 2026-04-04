@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "tetra",
+    name: "Tetra",
     platforms: [.macOS(.v15)],
     targets: [
         .executableTarget(
-            name: "tetra",
+            name: "Tetra",
             path: "Sources",
             resources: [.process("Resources")]
         )

@@ -16,7 +16,7 @@ class HotkeyManager {
         guard parts.count >= 2, let keyName = parts.last else { return }
 
         guard let keyCode = Self.keyCodes[keyName] else {
-            print("[tetra] Unknown key: \(keyName)")
+            print("[Tetra] Unknown key: \(keyName)")
             return
         }
 
@@ -48,7 +48,7 @@ class HotkeyManager {
 
         let hotKeyID = EventHotKeyID(signature: 0x54_45_54_52, id: 1) // "TETR"
         RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        print("[tetra] Hotkey registered: \(hotkey)")
+        print("[Tetra] Hotkey registered: \(hotkey)")
     }
 
     func unregister() {

@@ -63,7 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.server.stop()
             self.server.start(port: UInt16(c.server.port))
             self.hotkeyManager.register(hotkey: c.hotkey)
-            print("[tetra] Config reloaded")
+            print("[Tetra] Config reloaded")
         }
 
         // Prompt for Accessibility permission

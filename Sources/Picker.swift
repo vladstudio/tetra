@@ -72,13 +72,10 @@ final class PickerPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NS
     // MARK: - Show / Dismiss
 
     func show() {
-        Task.detached {
-            let text = await ContextCapture.captureSelected()
-            await MainActor.run {
-                guard let text, !text.isEmpty else { return }
-                self.capturedText = text
-                self.showPanel()
-            }
+        Task {
+            guard let text = await ContextCapture.captureSelected(), !text.isEmpty else { return }
+            self.capturedText = text
+            self.showPanel()
         }
     }
 

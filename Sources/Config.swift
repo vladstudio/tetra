@@ -48,7 +48,7 @@ class ConfigManager: @unchecked Sendable {
         watchFile()
     }
 
-    func load() {
+    private func load() {
         if !FileManager.default.fileExists(atPath: configFile.path) {
             createDefaultConfig()
         }
