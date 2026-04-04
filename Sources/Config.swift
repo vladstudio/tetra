@@ -53,11 +53,15 @@ class ConfigManager: @unchecked Sendable {
             createDefaultConfig()
         }
 
-        guard let data = try? Data(contentsOf: configFile),
-              let parsed = try? JSONDecoder().decode(TetraConfig.self, from: data) else { return }
-        lock.lock()
-        _config = parsed
-        lock.unlock()
+        guard let data = try? Data(contentsOf: configFile) else { return }
+        do {
+            let parsed = try JSONDecoder().decode(TetraConfig.self, from: data)
+            lock.lock()
+            _config = parsed
+            lock.unlock()
+        } catch {
+            print("[Tetra] Config parse error: \(error.localizedDescription)")
+        }
     }
 
     private func createDefaultConfig() {

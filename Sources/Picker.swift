@@ -73,7 +73,10 @@ final class PickerPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NS
 
     func show() {
         Task {
-            guard let text = await ContextCapture.captureSelected(), !text.isEmpty else { return }
+            guard let text = await ContextCapture.captureSelected(), !text.isEmpty else {
+                NSSound.beep()
+                return
+            }
             self.capturedText = text
             self.showPanel()
         }

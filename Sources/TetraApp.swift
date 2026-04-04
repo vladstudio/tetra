@@ -31,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static var previousApp: NSRunningApplication?
     private var server = TetraServer()
     private var hotkeyManager = HotkeyManager()
+    private var activePort: UInt16 = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         CommandRunner.shared.createDefaults()
@@ -48,7 +49,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Start server
-        server.start(port: UInt16(config.server.port))
+        activePort = UInt16(config.server.port)
+        server.start(port: activePort)
 
         // Register hotkey
         HotkeyManager.onHotkey = {
@@ -60,8 +62,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConfigManager.shared.onChange = { [weak self] in
             guard let self else { return }
             let c = ConfigManager.shared.config
-            self.server.stop()
-            self.server.start(port: UInt16(c.server.port))
+            let newPort = UInt16(c.server.port)
+            if newPort != self.activePort {
+                self.server.stop()
+                self.server.start(port: newPort)
+                self.activePort = newPort
+            }
             self.hotkeyManager.register(hotkey: c.hotkey)
             print("[Tetra] Config reloaded")
         }
