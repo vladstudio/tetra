@@ -82,9 +82,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MenuBarView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var accessibilityGranted = AXIsProcessTrusted()
 
     var body: some View {
         let config = ConfigManager.shared.config
+
+        if !accessibilityGranted {
+            Button("Grant Accessibility Permission...") {
+                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                NSWorkspace.shared.open(url)
+            }
+
+            Divider()
+        }
 
         Section("Commands") {
             ForEach(CommandRunner.shared.listCommands(), id: \.self) { name in
@@ -127,6 +137,9 @@ struct MenuBarView: View {
         Divider()
 
         Button("Quit") { NSApp.terminate(nil) }
+            .onAppear {
+                accessibilityGranted = AXIsProcessTrusted()
+            }
     }
 
     private func transformSelection(command: String) {
