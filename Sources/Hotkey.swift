@@ -9,15 +9,19 @@ class HotkeyManager {
 
     nonisolated init() {}
 
-    func register(hotkey: String) {
+    /// Returns nil on success, or an error message on failure.
+    @discardableResult
+    func register(hotkey: String) -> String? {
         unregister()
 
         let parts = hotkey.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
-        guard parts.count >= 2, let keyName = parts.last else { return }
+        guard parts.count >= 2, let keyName = parts.last else {
+            return "Invalid hotkey format: \(hotkey)"
+        }
 
         guard let keyCode = Self.keyCodes[keyName] else {
             print("[Tetra] Unknown key: \(keyName)")
-            return
+            return "Unknown key: \(keyName)"
         }
 
         var modifiers: UInt32 = 0
@@ -49,6 +53,7 @@ class HotkeyManager {
         let hotKeyID = EventHotKeyID(signature: 0x54_45_54_52, id: 1) // "TETR"
         RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         print("[Tetra] Hotkey registered: \(hotkey)")
+        return nil
     }
 
     func unregister() {

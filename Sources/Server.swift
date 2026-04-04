@@ -4,22 +4,27 @@ import Network
 final class TetraServer: @unchecked Sendable {
     private var listener: NWListener?
 
-    func start(port: UInt16) {
+    /// Returns nil on success, or an error message on failure.
+    @discardableResult
+    func start(port: UInt16) -> String? {
         do {
             guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-                print("[Tetra] Invalid port: \(port)")
-                return
+                let msg = "Invalid port: \(port)"
+                print("[Tetra] \(msg)")
+                return msg
             }
             listener = try NWListener(using: .tcp, on: nwPort)
         } catch {
-            print("[Tetra] Failed to start server: \(error)")
-            return
+            let msg = "Failed to start server: \(error.localizedDescription)"
+            print("[Tetra] \(msg)")
+            return msg
         }
         listener?.newConnectionHandler = { [weak self] conn in
             self?.handleConnection(conn)
         }
         listener?.start(queue: .global(qos: .userInitiated))
         print("[Tetra] Server listening on port \(port)")
+        return nil
     }
 
     func stop() {

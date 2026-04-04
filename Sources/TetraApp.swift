@@ -8,13 +8,24 @@ final class CommandState {
     var isRunning = false
 }
 
+@Observable
+@MainActor
+final class AppStatus {
+    static let shared = AppStatus()
+    var configError: String?
+    var serverError: String?
+    var hotkeyError: String?
+}
+
 @main
 struct TetraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @State private var commandState = CommandState.shared
+    @State private var appStatus = AppStatus.shared
 
     private static let menuBarIcon = loadIcon("MenuBarIcon")
     private static let thinkIcon = loadIcon("ThinkIcon")
+    private static let warningIcon = loadIcon("WarningIcon")
 
     private static func loadIcon(_ name: String) -> NSImage {
         if let url = Bundle.module.url(forResource: name, withExtension: "png"),
@@ -27,11 +38,19 @@ struct TetraApp: App {
         return NSImage(systemSymbolName: "text.cursor", accessibilityDescription: "Tetra")!
     }
 
+    private var hasError: Bool {
+        appStatus.configError != nil
+            || appStatus.serverError != nil
+            || appStatus.hotkeyError != nil
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
         } label: {
-            Image(nsImage: commandState.isRunning ? Self.thinkIcon : Self.menuBarIcon)
+            Image(nsImage: commandState.isRunning ? Self.thinkIcon
+                : hasError ? Self.warningIcon
+                : Self.menuBarIcon)
         }
     }
 }
@@ -61,13 +80,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start server
         activePort = UInt16(config.server.port)
-        server.start(port: activePort)
+        AppStatus.shared.serverError = server.start(port: activePort)
 
         // Register hotkey
         HotkeyManager.onHotkey = {
             PickerPanel.shared.show()
         }
-        hotkeyManager.register(hotkey: config.hotkey)
+        AppStatus.shared.hotkeyError = hotkeyManager.register(hotkey: config.hotkey)
 
         // Watch config for changes
         ConfigManager.shared.onChange = { [weak self] in
@@ -76,10 +95,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let newPort = UInt16(c.server.port)
             if newPort != self.activePort {
                 self.server.stop()
-                self.server.start(port: newPort)
+                AppStatus.shared.serverError = self.server.start(port: newPort)
                 self.activePort = newPort
             }
-            self.hotkeyManager.register(hotkey: c.hotkey)
+            AppStatus.shared.hotkeyError = self.hotkeyManager.register(hotkey: c.hotkey)
             print("[Tetra] Config reloaded")
         }
 
@@ -97,6 +116,7 @@ struct MenuBarView: View {
 
     var body: some View {
         let config = ConfigManager.shared.config
+        let status = AppStatus.shared
 
         if !accessibilityGranted {
             Button("Grant Accessibility Permission...") {
@@ -104,6 +124,30 @@ struct MenuBarView: View {
                 NSWorkspace.shared.open(url)
             }
 
+            Divider()
+        }
+
+        if let err = status.configError {
+            Section("Config Error") {
+                Text(err).font(.caption).foregroundStyle(.red)
+                Button("Open Config...") {
+                    let path = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent(".tetra/config.json")
+                    NSWorkspace.shared.open(path)
+                }
+            }
+            Divider()
+        }
+
+        if let err = status.serverError {
+            Text("Server: \(err)").font(.caption).foregroundStyle(.red)
+        }
+
+        if let err = status.hotkeyError {
+            Text("Hotkey: \(err)").font(.caption).foregroundStyle(.red)
+        }
+
+        if status.serverError != nil || status.hotkeyError != nil {
             Divider()
         }
 
@@ -118,10 +162,14 @@ struct MenuBarView: View {
 
         Divider()
 
-        Text("Server: localhost:\(config.server.port)")
-            .font(.caption)
-        Text("Hotkey: \(config.hotkey)")
-            .font(.caption)
+        if status.serverError == nil {
+            Text("Server: localhost:\(config.server.port)")
+                .font(.caption)
+        }
+        if status.hotkeyError == nil {
+            Text("Hotkey: \(config.hotkey)")
+                .font(.caption)
+        }
 
         Divider()
 

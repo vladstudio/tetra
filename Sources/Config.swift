@@ -59,8 +59,11 @@ class ConfigManager: @unchecked Sendable {
             lock.lock()
             _config = parsed
             lock.unlock()
+            MainActor.assumeIsolated { AppStatus.shared.configError = nil }
         } catch {
-            print("[Tetra] Config parse error: \(error.localizedDescription)")
+            let msg = error.localizedDescription
+            print("[Tetra] Config parse error: \(msg)")
+            MainActor.assumeIsolated { AppStatus.shared.configError = msg }
         }
     }
 
