@@ -1,0 +1,168 @@
+import Foundation
+import Network
+
+class TetraServer {
+    private var listener: NWListener?
+
+    func start(port: UInt16) {
+        do {
+            listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+        } catch {
+            print("[tetra] Failed to start server: \(error)")
+            return
+        }
+        listener?.newConnectionHandler = { [weak self] conn in
+            self?.handleConnection(conn)
+        }
+        listener?.start(queue: .global(qos: .userInitiated))
+        print("[tetra] Server listening on port \(port)")
+    }
+
+    func stop() {
+        listener?.cancel()
+        listener = nil
+    }
+
+    // MARK: - Connection handling
+
+    private func handleConnection(_ conn: NWConnection) {
+        guard isLocalConnection(conn) else {
+            conn.cancel()
+            return
+        }
+        conn.start(queue: .global(qos: .userInitiated))
+        var buffer = Data()
+
+        func readMore() {
+            conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+                if let data = data { buffer.append(data) }
+
+                if let req = self?.parseHTTP(buffer), self?.hasFullBody(buffer) == true {
+                    self?.route(req, conn)
+                } else if !isComplete && error == nil {
+                    readMore()
+                } else {
+                    conn.cancel()
+                }
+            }
+        }
+        readMore()
+    }
+
+    private func isLocalConnection(_ conn: NWConnection) -> Bool {
+        guard case .hostPort(let host, _) = conn.endpoint else { return false }
+        switch host {
+        case .ipv4(let addr): return addr == IPv4Address.loopback
+        case .ipv6(let addr): return addr == IPv6Address.loopback
+        default: return false
+        }
+    }
+
+    // MARK: - HTTP parsing
+
+    private struct HTTPRequest {
+        let method: String
+        let path: String
+        let body: Data?
+    }
+
+    private func parseHTTP(_ data: Data) -> HTTPRequest? {
+        guard let str = String(data: data, encoding: .utf8),
+              let headerEnd = str.range(of: "\r\n\r\n") else { return nil }
+
+        let headerPart = String(str[str.startIndex..<headerEnd.lowerBound])
+        let lines = headerPart.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else { return nil }
+        let tokens = requestLine.split(separator: " ", maxSplits: 2)
+        guard tokens.count >= 2 else { return nil }
+
+        let bodyStartOffset = str.distance(from: str.startIndex, to: headerEnd.upperBound)
+        let body = bodyStartOffset < data.count ? Data(data[bodyStartOffset...]) : nil
+
+        return HTTPRequest(method: String(tokens[0]), path: String(tokens[1]), body: body)
+    }
+
+    private func hasFullBody(_ data: Data) -> Bool {
+        guard let str = String(data: data, encoding: .utf8),
+              let headerEnd = str.range(of: "\r\n\r\n") else { return false }
+
+        let headerPart = String(str[str.startIndex..<headerEnd.lowerBound])
+        for line in headerPart.components(separatedBy: "\r\n") {
+            if line.lowercased().hasPrefix("content-length:") {
+                let lenStr = line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
+                if let expected = Int(lenStr) {
+                    let bodyStart = str.distance(from: str.startIndex, to: headerEnd.upperBound)
+                    return data.count - bodyStart >= expected
+                }
+            }
+        }
+        return true
+    }
+
+    // MARK: - Routing
+
+    private func route(_ req: HTTPRequest, _ conn: NWConnection) {
+        // Handle CORS preflight
+        if req.method == "OPTIONS" {
+            respond(conn, status: 204, json: [:] as [String: String])
+            return
+        }
+
+        switch (req.method, req.path) {
+        case ("GET", "/functions"):
+            let names = Array(ConfigManager.shared.config.functions.keys).sorted()
+            respond(conn, json: names)
+
+        case ("POST", "/transform"):
+            guard let body = req.body,
+                  let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+                  let function = json["function"] as? String,
+                  let text = json["text"] as? String else {
+                respond(conn, status: 400, json: ["error": "Missing 'function' or 'text'"])
+                return
+            }
+            Task {
+                do {
+                    let result = try await TransformEngine.shared.transform(text: text, function: function)
+                    self.respond(conn, json: ["result": result])
+                } catch {
+                    self.respond(conn, status: 500, json: ["error": error.localizedDescription])
+                }
+            }
+
+        default:
+            respond(conn, status: 404, json: ["error": "Not found"])
+        }
+    }
+
+    // MARK: - Response
+
+    private func respond(_ conn: NWConnection, status: Int = 200, json: Any) {
+        let statusText: String = switch status {
+        case 200: "OK"
+        case 204: "No Content"
+        case 400: "Bad Request"
+        case 404: "Not Found"
+        case 500: "Internal Server Error"
+        default: "Error"
+        }
+
+        let body = status == 204 ? Data() :
+            ((try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)) ?? Data())
+
+        var headers = "HTTP/1.1 \(status) \(statusText)\r\n"
+        headers += "Content-Type: application/json\r\n"
+        headers += "Content-Length: \(body.count)\r\n"
+        headers += "Access-Control-Allow-Origin: *\r\n"
+        headers += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        headers += "Access-Control-Allow-Headers: Content-Type\r\n"
+        headers += "Connection: close\r\n\r\n"
+
+        var response = headers.data(using: .utf8)!
+        response.append(body)
+
+        conn.send(content: response, completion: .contentProcessed { _ in
+            conn.cancel()
+        })
+    }
+}
