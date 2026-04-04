@@ -3,8 +3,9 @@ import AppKit
 enum ContextCapture {
     /// Capture selected text from the active app.
     /// Tries Accessibility API first (native apps), falls back to Cmd+C (Electron/web apps).
-    static func captureSelected() -> String? {
-        selectedViaAX() ?? selectedViaClipboard()
+    static func captureSelected() async -> String? {
+        if let text = selectedViaAX() { return text }
+        return await selectedViaClipboard()
     }
 
     // MARK: - Accessibility API (preferred)
@@ -21,10 +22,14 @@ enum ContextCapture {
 
     // MARK: - Clipboard fallback (Electron/web apps)
 
-    private static func selectedViaClipboard() -> String? {
+    private static func selectedViaClipboard() async -> String? {
         let pb = NSPasteboard.general
         let savedCount = pb.changeCount
-        let savedString = pb.string(forType: .string)
+        let savedItems = pb.pasteboardItems?.map { item in
+            item.types.compactMap { type in
+                item.data(forType: type).map { (type, $0) }
+            }
+        } ?? []
 
         // Simulate Cmd+C
         let src = CGEventSource(stateID: .hidSystemState)
@@ -35,7 +40,7 @@ enum ContextCapture {
         down.post(tap: .cgAnnotatedSessionEventTap)
         up.post(tap: .cgAnnotatedSessionEventTap)
 
-        Thread.sleep(forTimeInterval: 0.1)
+        try? await Task.sleep(nanoseconds: 100_000_000)
 
         // Check if clipboard changed
         guard pb.changeCount != savedCount,
@@ -43,10 +48,14 @@ enum ContextCapture {
             return nil
         }
 
-        // Restore original clipboard (only string type — non-string content like images is lost)
-        if let savedString {
+        // Restore original clipboard
+        if !savedItems.isEmpty {
             pb.clearContents()
-            pb.setString(savedString, forType: .string)
+            for itemData in savedItems {
+                let item = NSPasteboardItem()
+                for (type, data) in itemData { item.setData(data, forType: type) }
+                pb.writeObjects([item])
+            }
         }
 
         return text

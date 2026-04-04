@@ -129,7 +129,10 @@ struct MenuBarView: View {
 
         Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
-            guard let text = ContextCapture.captureSelected(), !text.isEmpty else { return }
+            guard let text = await ContextCapture.captureSelected(), !text.isEmpty else {
+                NSSound.beep()
+                return
+            }
             do {
                 let result = try await CommandRunner.shared.run(command: command, input: text)
                 TextInjector.inject(result)

@@ -31,6 +31,7 @@ class ConfigManager: @unchecked Sendable {
     private let configDir: URL
     private let configFile: URL
     private var fileMonitor: DispatchSourceFileSystemObject?
+    private var debounceItem: DispatchWorkItem?
 
     var config: TetraConfig {
         lock.lock()
@@ -83,10 +84,14 @@ class ConfigManager: @unchecked Sendable {
             fileDescriptor: fd, eventMask: [.write, .rename], queue: .main)
         source.setEventHandler { [weak self] in
             guard let self else { return }
-            self.load()
-            MainActor.assumeIsolated {
-                self.onChange?()
+            self.debounceItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.load()
+                MainActor.assumeIsolated { self.onChange?() }
             }
+            self.debounceItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
         }
         source.setCancelHandler { close(fd) }
         source.resume()

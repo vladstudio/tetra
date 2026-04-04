@@ -15,7 +15,7 @@ enum TetraError: LocalizedError {
     }
 }
 
-final class CommandRunner: @unchecked Sendable {
+final class CommandRunner: Sendable {
     static let shared = CommandRunner()
 
     let commandsDir = FileManager.default.homeDirectoryForCurrentUser

@@ -36,6 +36,9 @@ final class TetraServer: @unchecked Sendable {
         }
         conn.start(queue: .global(qos: .userInitiated))
 
+        nonisolated(unsafe) let timeout = DispatchWorkItem { conn.cancel() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timeout)
+
         final class Buffer: @unchecked Sendable { var data = Data() }
         let buffer = Buffer()
 
@@ -44,10 +47,12 @@ final class TetraServer: @unchecked Sendable {
                 if let data = data { buffer.data.append(data) }
 
                 if let req = self?.parseHTTP(buffer.data), self?.hasFullBody(buffer.data) == true {
+                    timeout.cancel()
                     self?.route(req, conn)
                 } else if !isComplete && error == nil {
                     readMore()
                 } else {
+                    timeout.cancel()
                     conn.cancel()
                 }
             }
