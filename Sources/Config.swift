@@ -1,4 +1,5 @@
 import Foundation
+import MacAppKit
 
 struct TetraConfig: Codable, Sendable {
     var server: ServerConfig = ServerConfig()
@@ -42,7 +43,8 @@ class ConfigManager: @unchecked Sendable {
     @MainActor var onChange: (@MainActor () -> Void)?
 
     private init() {
-        configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".tetra")
+        ConfigDir.migrateDirectory(from: "~/.tetra", to: "tetra")
+        configDir = ConfigDir.url(for: "tetra")
         configFile = configDir.appendingPathComponent("config.json")
         load()
         watchFile()

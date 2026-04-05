@@ -1,4 +1,4 @@
-import ServiceManagement
+import MacAppKit
 import SwiftUI
 
 @Observable
@@ -84,7 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Register hotkey
         HotkeyManager.onHotkey = {
-            PickerPanel.shared.show()
+            CommandPicker.shared.show()
         }
         AppStatus.shared.hotkeyError = hotkeyManager.register(hotkey: config.hotkey)
 
@@ -103,16 +103,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Prompt for Accessibility permission
-        let opts = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(opts)
+        Permissions.request(.accessibility)
     }
 }
 
 // MARK: - Menu Bar View
 
 struct MenuBarView: View {
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var accessibilityGranted = AXIsProcessTrusted()
+    @State private var launchAtLogin = LoginItem.isEnabled
+    @State private var accessibilityGranted = Permissions.isGranted(.accessibility)
 
     var body: some View {
         let config = ConfigManager.shared.config
@@ -120,8 +119,7 @@ struct MenuBarView: View {
 
         if !accessibilityGranted {
             Button("Grant Accessibility Permission...") {
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                NSWorkspace.shared.open(url)
+                Permissions.openSettings(.accessibility)
             }
 
             Divider()
@@ -131,8 +129,7 @@ struct MenuBarView: View {
             Section("Config Error") {
                 Text(err).font(.caption).foregroundStyle(.red)
                 Button("Open Config...") {
-                    let path = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent(".tetra/config.json")
+                    let path = ConfigDir.url(for: "tetra").appendingPathComponent("config.json")
                     NSWorkspace.shared.open(path)
                 }
             }
@@ -178,26 +175,21 @@ struct MenuBarView: View {
         }
 
         Button("Open Config...") {
-            let path = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".tetra/config.json")
+            let path = ConfigDir.url(for: "tetra").appendingPathComponent("config.json")
             NSWorkspace.shared.open(path)
         }
 
         Toggle("Start at Login", isOn: $launchAtLogin)
             .onChange(of: launchAtLogin) { _, on in
-                do {
-                    if on { try SMAppService.mainApp.register() }
-                    else { try SMAppService.mainApp.unregister() }
-                } catch {
-                    launchAtLogin = !on
-                }
+                if on { LoginItem.enable() } else { LoginItem.disable() }
+                launchAtLogin = LoginItem.isEnabled
             }
 
         Divider()
 
         Button("Quit") { NSApp.terminate(nil) }
             .onAppear {
-                accessibilityGranted = AXIsProcessTrusted()
+                accessibilityGranted = Permissions.isGranted(.accessibility)
             }
     }
 

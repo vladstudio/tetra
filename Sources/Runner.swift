@@ -1,4 +1,5 @@
 import Foundation
+import MacAppKit
 import os
 
 enum TetraError: LocalizedError {
@@ -18,8 +19,7 @@ enum TetraError: LocalizedError {
 final class CommandRunner: Sendable {
     static let shared = CommandRunner()
 
-    let commandsDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".tetra/commands")
+    let commandsDir = ConfigDir.url(for: "tetra").appendingPathComponent("commands")
 
     func listCommands() -> [String] {
         guard let files = try? FileManager.default.contentsOfDirectory(

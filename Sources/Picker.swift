@@ -1,8 +1,9 @@
 import AppKit
+import MacAppKit
 
 @MainActor
-final class PickerPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    static let shared = PickerPanel()
+final class CommandPicker: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+    static let shared = CommandPicker()
 
     private let search = NSTextField()
     private let table = NSTableView()

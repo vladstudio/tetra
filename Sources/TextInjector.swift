@@ -1,4 +1,5 @@
 import AppKit
+import MacAppKit
 
 @MainActor
 enum TextInjector {
