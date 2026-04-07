@@ -33,6 +33,21 @@ describe("POST /transform", () => {
     expect(res.status).toBe(400);
   });
 
+  test("passes extra env to command", async () => {
+    const res = await fetch(`${BASE}/transform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        command: "Uppercase",
+        text: "hello",
+        env: { CUSTOM_VAR: "test_value" },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { result } = await res.json();
+    expect(result).toBe("HELLO");
+  });
+
   test("unknown command returns 500", async () => {
     const res = await fetch(`${BASE}/transform`, {
       method: "POST",

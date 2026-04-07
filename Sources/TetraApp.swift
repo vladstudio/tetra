@@ -6,6 +6,11 @@ import SwiftUI
 final class CommandState {
     static let shared = CommandState()
     var isRunning = false
+    var runningCommand: String?
+    var runningProcess: Process?
+    func cancel() {
+        runningProcess?.terminate()
+    }
 }
 
 @Observable
@@ -66,10 +71,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var activePort: UInt16 = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        CommandRunner.shared.createDefaults()
         let config = ConfigManager.shared.config
 
-        // Track the last non-Tetra frontmost app
+        // Track the last non-Tetra frontmost app (seed with current)
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            AppDelegate.previousApp = front
+        }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main) { notification in
@@ -118,9 +126,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 func runCommand(command: String, text: String) async {
     CommandState.shared.isRunning = true
-    defer { CommandState.shared.isRunning = false }
+    CommandState.shared.runningCommand = command
+    defer {
+        CommandState.shared.isRunning = false
+        CommandState.shared.runningCommand = nil
+        CommandState.shared.runningProcess = nil
+    }
     do {
-        let result = try await CommandRunner.shared.run(command: command, input: text)
+        let result = try await CommandRunner.shared.run(command: command, input: text) { process in
+            DispatchQueue.main.async { CommandState.shared.runningProcess = process }
+        }
         TextInjector.inject(result)
     } catch {
         let alert = NSAlert()
@@ -170,12 +185,21 @@ struct MenuBarView: View {
             Divider()
         }
 
-        Section("Commands") {
-            ForEach(CommandRunner.shared.listCommands(), id: \.self) { name in
-                Button(name) {
-                    transformSelection(command: name)
+        let commands = CommandRunner.shared.listCommands()
+        if commands.isEmpty {
+            Text("No commands yet").foregroundStyle(.secondary)
+            Button("Create Sample Commands...") {
+                CommandRunner.shared.createSampleCommands()
+            }
+        } else if let running = CommandState.shared.runningCommand {
+            Text("Running: \(running)...").foregroundStyle(.secondary)
+            Button("Cancel") { CommandState.shared.cancel() }
+        } else {
+            Section("Commands") {
+                ForEach(commands, id: \.self) { name in
+                    Button(name) { transformSelection(command: name) }
+                        .font(.system(.body, design: .monospaced))
                 }
-                .font(.system(.body, design: .monospaced))
             }
         }
 

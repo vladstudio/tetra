@@ -30,7 +30,7 @@ final class CommandRunner: Sendable {
             .sorted()
     }
 
-    func run(command: String, input: String) async throws -> String {
+    func run(command: String, input: String, extraEnv: [String: String]? = nil, onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
         guard let script = findScript(named: command) else {
             throw TetraError.unknownCommand(command)
         }
@@ -43,6 +43,7 @@ final class CommandRunner: Sendable {
                 env["\(prefix)_KEY"] = key
             }
         }
+        if let extraEnv { env.merge(extraEnv) { _, new in new } }
 
         let process = Process()
         if let (exec, args) = interpreter(for: script) {
@@ -61,6 +62,7 @@ final class CommandRunner: Sendable {
         process.standardError = stderrPipe
 
         try process.run()
+        onProcess?(process)
 
         stdinPipe.fileHandleForWriting.write(Data(input.utf8))
         stdinPipe.fileHandleForWriting.closeFile()
@@ -73,6 +75,9 @@ final class CommandRunner: Sendable {
                 let timeoutItem = DispatchWorkItem {
                     timedOut.withLock { $0 = true }
                     process.terminate()
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                    }
                 }
                 DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: timeoutItem)
 
@@ -112,53 +117,47 @@ final class CommandRunner: Sendable {
         }
     }
 
-    func createDefaults() {
-        guard !FileManager.default.fileExists(atPath: commandsDir.path) else { return }
+    func createSampleCommands() {
         try? FileManager.default.createDirectory(at: commandsDir, withIntermediateDirectories: true)
+        writeScript("Uppercase.sh", "#!/bin/bash\ntr '[:lower:]' '[:upper:]'")
+        writeScript("Lowercase.sh", "#!/bin/bash\ntr '[:upper:]' '[:lower:]'")
+        writeScript("Trim.sh", "#!/bin/bash\nsed 's/^[[:space:]]*//;s/[[:space:]]*$//'")
+        if let (name, body) = detectGrammarScript() { writeScript(name, body) }
+    }
 
-        let defaults: [(String, String)] = [
-            ("uppercase.sh", """
-            #!/bin/bash
-            tr '[:lower:]' '[:upper:]'
-            """),
-            ("lowercase.sh", """
-            #!/bin/bash
-            tr '[:upper:]' '[:lower:]'
-            """),
-            ("trim.sh", """
-            #!/bin/bash
-            sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-            """),
-            ("fix-grammar.py", """
-            #!/usr/bin/env python3
-            # Fix grammar using Ollama (requires Ollama running locally)
-            import sys, os, json, urllib.request
+    private func writeScript(_ name: String, _ content: String) {
+        let url = commandsDir.appendingPathComponent(name)
+        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        try? content.write(to: url, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
 
-            text = sys.stdin.read()
-            url = os.environ.get("TETRA_OLLAMA_URL", "http://localhost:11434/v1") + "/chat/completions"
-
-            body = json.dumps({
-                "model": "gemma3:4b",
-                "messages": [
-                    {"role": "system", "content": "Fix grammar and spelling. Return ONLY the corrected text."},
-                    {"role": "user", "content": text}
-                ],
-                "temperature": 0.3
-            }).encode()
-
-            req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-            resp = urllib.request.urlopen(req, timeout=60)
-            result = json.loads(resp.read())
-            print(result["choices"][0]["message"]["content"].strip())
-            """),
+    private func detectGrammarScript() -> (String, String)? {
+        let env = ProcessInfo.processInfo.environment
+        let oai: [(key: String, prefix: String, model: String)] = [
+            ("OPENROUTER_API_KEY", "OPENROUTER", "google/gemma-4-26b-a4b-it"),
+            ("GEMINI_API_KEY",     "GEMINI",     "gemini-2.5-flash-lite"),
+            ("OPENAI_API_KEY",     "OPENAI",     "gpt-4.1-mini"),
+            ("GROQ_API_KEY",       "GROQ",       "llama-3.3-70b-versatile"),
         ]
-
-        for (name, content) in defaults {
-            let path = commandsDir.appendingPathComponent(name)
-            try? content.write(to: path, atomically: true, encoding: .utf8)
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o755], ofItemAtPath: path.path)
+        let sys = "Fix grammar and spelling. Return ONLY the corrected text."
+        if let p = oai.first(where: { !(env[$0.key] ?? "").isEmpty }) {
+            return ("Fix grammar.sh", """
+            #!/bin/bash
+            jq -Rsn --arg t "$(cat)" '{"model":"\(p.model)","messages":[{"role":"system","content":"\(sys)"},{"role":"user","content":$t}],"temperature":0.3}' \
+            | curl -s "$TETRA_\(p.prefix)_URL/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $TETRA_\(p.prefix)_KEY" -d @- \
+            | jq -r '.choices[0].message.content'
+            """)
         }
+        if !(env["ANTHROPIC_API_KEY"] ?? "").isEmpty {
+            return ("Fix grammar.sh", """
+            #!/bin/bash
+            jq -Rsn --arg t "$(cat)" '{"model":"claude-haiku-4-5-20251001","max_tokens":1024,"system":"\(sys)","messages":[{"role":"user","content":$t}]}' \
+            | curl -s "$TETRA_ANTHROPIC_URL/v1/messages" -H "Content-Type: application/json" -H "x-api-key: $TETRA_ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -d @- \
+            | jq -r '.content[0].text'
+            """)
+        }
+        return nil
     }
 
     private func findScript(named name: String) -> URL? {

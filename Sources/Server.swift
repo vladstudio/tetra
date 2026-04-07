@@ -141,9 +141,10 @@ final class TetraServer: @unchecked Sendable {
                 respond(conn, status: 400, json: ["error": "Missing 'command' or 'text'"])
                 return
             }
+            let extraEnv = json["env"] as? [String: String]
             Task {
                 do {
-                    let result = try await CommandRunner.shared.run(command: command, input: text)
+                    let result = try await CommandRunner.shared.run(command: command, input: text, extraEnv: extraEnv)
                     self.respond(conn, json: ["result": result])
                 } catch {
                     self.respond(conn, status: 500, json: ["error": error.localizedDescription])

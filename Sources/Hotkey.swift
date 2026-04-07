@@ -31,7 +31,7 @@ class HotkeyManager {
             case "option", "alt": modifiers |= UInt32(optionKey)
             case "shift": modifiers |= UInt32(shiftKey)
             case "cmd", "command": modifiers |= UInt32(cmdKey)
-            default: break
+            default: return "Unknown modifier: \(mod)"
             }
         }
 
