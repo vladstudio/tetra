@@ -7,6 +7,7 @@ final class TetraServer: @unchecked Sendable {
     /// Returns nil on success, or an error message on failure.
     @discardableResult
     func start(port: UInt16) -> String? {
+        dispatchPrecondition(condition: .onQueue(.main))
         do {
             guard let nwPort = NWEndpoint.Port(rawValue: port) else {
                 let msg = "Invalid port: \(port)"
@@ -28,6 +29,7 @@ final class TetraServer: @unchecked Sendable {
     }
 
     func stop() {
+        dispatchPrecondition(condition: .onQueue(.main))
         listener?.cancel()
         listener = nil
     }

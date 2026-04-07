@@ -108,24 +108,11 @@ final class CommandPicker: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, 
         guard row >= 0, row < filtered.count else { return }
         let command = filtered[row]
         guard let text = capturedText else { return }
-
         dismiss()
         AppDelegate.previousApp?.activate()
-
         Task {
-            do {
-                try await Task.sleep(nanoseconds: 150_000_000)
-                CommandState.shared.isRunning = true
-                defer { CommandState.shared.isRunning = false }
-                let result = try await CommandRunner.shared.run(command: command, input: text)
-                TextInjector.inject(result)
-            } catch {
-                CommandState.shared.isRunning = false
-                let alert = NSAlert()
-                alert.messageText = "Command failed"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
-            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await runCommand(command: command, text: text)
         }
     }
 

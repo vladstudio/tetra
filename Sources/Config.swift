@@ -51,6 +51,7 @@ class ConfigManager: @unchecked Sendable {
     }
 
     private func load() {
+        dispatchPrecondition(condition: .onQueue(.main))
         if !FileManager.default.fileExists(atPath: configFile.path) {
             createDefaultConfig()
         }

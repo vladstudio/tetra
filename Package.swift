@@ -3,14 +3,14 @@ import PackageDescription
 
 let package = Package(
     name: "Tetra",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     dependencies: [
-        .package(path: "../mac-app-kit"),
+        .package(path: "../app-kit"),
     ],
     targets: [
         .executableTarget(
             name: "Tetra",
-            dependencies: [.product(name: "MacAppKit", package: "mac-app-kit")],
+            dependencies: [.product(name: "MacAppKit", package: "app-kit")],
             path: "Sources",
             resources: [.process("Resources")]
         )

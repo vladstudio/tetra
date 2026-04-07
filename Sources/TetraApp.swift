@@ -15,13 +15,15 @@ final class AppStatus {
     var configError: String?
     var serverError: String?
     var hotkeyError: String?
+    var port: Int = 24100
+    var hotkey: String = "ctrl+option+t"
 }
 
 @main
 struct TetraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @State private var commandState = CommandState.shared
-    @State private var appStatus = AppStatus.shared
+    private let commandState = CommandState.shared
+    private let appStatus = AppStatus.shared
 
     private static let menuBarIcon = loadIcon("MenuBarIcon")
     private static let thinkIcon = loadIcon("ThinkIcon")
@@ -87,6 +89,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             CommandPicker.shared.show()
         }
         AppStatus.shared.hotkeyError = hotkeyManager.register(hotkey: config.hotkey)
+        AppStatus.shared.port = config.server.port
+        AppStatus.shared.hotkey = config.hotkey
 
         // Watch config for changes
         ConfigManager.shared.onChange = { [weak self] in
@@ -99,11 +103,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.activePort = newPort
             }
             AppStatus.shared.hotkeyError = self.hotkeyManager.register(hotkey: c.hotkey)
+            AppStatus.shared.port = c.server.port
+            AppStatus.shared.hotkey = c.hotkey
             print("[Tetra] Config reloaded")
         }
 
         // Prompt for Accessibility permission
         Permissions.request(.accessibility)
+    }
+}
+
+// MARK: - Shared
+
+@MainActor
+func runCommand(command: String, text: String) async {
+    CommandState.shared.isRunning = true
+    defer { CommandState.shared.isRunning = false }
+    do {
+        let result = try await CommandRunner.shared.run(command: command, input: text)
+        TextInjector.inject(result)
+    } catch {
+        let alert = NSAlert()
+        alert.messageText = "Command failed"
+        alert.informativeText = error.localizedDescription
+        alert.runModal()
     }
 }
 
@@ -114,7 +137,6 @@ struct MenuBarView: View {
     @State private var accessibilityGranted = Permissions.isGranted(.accessibility)
 
     var body: some View {
-        let config = ConfigManager.shared.config
         let status = AppStatus.shared
 
         if !accessibilityGranted {
@@ -160,11 +182,11 @@ struct MenuBarView: View {
         Divider()
 
         if status.serverError == nil {
-            Text("Server: localhost:\(config.server.port)")
+            Text("Server: localhost:\(status.port)")
                 .font(.caption)
         }
         if status.hotkeyError == nil {
-            Text("Hotkey: \(config.hotkey)")
+            Text("Hotkey: \(status.hotkey)")
                 .font(.caption)
         }
 
@@ -185,6 +207,10 @@ struct MenuBarView: View {
                 launchAtLogin = LoginItem.isEnabled
             }
 
+        Button("About Tetra") {
+            NSWorkspace.shared.open(URL(string: "https://tetra.vlad.studio")!)
+        }
+
         Divider()
 
         Button("Quit") { NSApp.terminate(nil) }
@@ -196,24 +222,13 @@ struct MenuBarView: View {
     private func transformSelection(command: String) {
         guard let app = AppDelegate.previousApp else { return }
         app.activate()
-
         Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard let text = await ContextCapture.captureSelected(), !text.isEmpty else {
                 NSSound.beep()
                 return
             }
-            CommandState.shared.isRunning = true
-            defer { CommandState.shared.isRunning = false }
-            do {
-                let result = try await CommandRunner.shared.run(command: command, input: text)
-                TextInjector.inject(result)
-            } catch {
-                let alert = NSAlert()
-                alert.messageText = "Command failed"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
-            }
+            await runCommand(command: command, text: text)
         }
     }
 }

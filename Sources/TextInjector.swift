@@ -21,9 +21,12 @@ enum TextInjector {
         up.post(tap: .cgAnnotatedSessionEventTap)
 
         // Restore clipboard after paste completes
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        let changeCount = pb.changeCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             MainActor.assumeIsolated {
-                snapshot.restore()
+                if NSPasteboard.general.changeCount == changeCount {
+                    snapshot.restore()
+                }
             }
         }
     }

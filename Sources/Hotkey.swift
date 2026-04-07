@@ -39,10 +39,9 @@ class HotkeyManager {
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed))
 
-        InstallEventHandler(
+        let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             { (_, _, _) -> OSStatus in
-                // Carbon event handlers fire on the main thread
                 MainActor.assumeIsolated {
                     HotkeyManager.onHotkey?()
                 }
@@ -50,8 +49,16 @@ class HotkeyManager {
             },
             1, &eventType, nil, &handlerRef)
 
+        guard installStatus == noErr else {
+            return "Failed to install event handler (OSStatus \(installStatus))"
+        }
+
         let hotKeyID = EventHotKeyID(signature: 0x54_45_54_52, id: 1) // "TETR"
-        RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        let registerStatus = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        guard registerStatus == noErr else {
+            return "Failed to register hotkey (OSStatus \(registerStatus))"
+        }
+
         print("[Tetra] Hotkey registered: \(hotkey)")
         return nil
     }
