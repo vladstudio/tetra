@@ -10,7 +10,7 @@ Commands can be written in Bash, Python, Ruby, or Node. They receive text via st
 
 Requires macOS 15+. Built with Swift and SwiftUI.
 
-**Website:** https://tetra.vlad.studio
+**Website:** https://apps.vlad.studio/tetra
 
 ## API
 

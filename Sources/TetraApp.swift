@@ -232,7 +232,7 @@ struct MenuBarView: View {
             }
 
         Button("About Tetra") {
-            NSWorkspace.shared.open(URL(string: "https://tetra.vlad.studio")!)
+            NSWorkspace.shared.open(URL(string: "https://apps.vlad.studio/tetra")!)
         }
 
         Divider()
