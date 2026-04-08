@@ -39,7 +39,7 @@ curl -X POST http://localhost:24100/transform \
 
 ## Configuration
 
-Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TETRA_<NAME>_URL` and `TETRA_<NAME>_KEY` environment variables. API keys starting with `$` are resolved from environment variables. Note: macOS GUI apps don't inherit shell environment variables, so `$` references only work if the variable is set via `launchctl setenv`. For reliability, use the literal key value directly.
+Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TETRA_<NAME>_URL` and `TETRA_<NAME>_KEY` environment variables. Put your API keys directly in the config file.
 
 ```json
 {
@@ -47,13 +47,13 @@ Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TET
   "server": { "port": 24100 },
   "providers": {
     "ollama":      { "baseUrl": "http://localhost:11434/v1" },
-    "openai":      { "baseUrl": "https://api.openai.com/v1",                              "apiKey": "$OPENAI_API_KEY" },
-    "anthropic":   { "baseUrl": "https://api.anthropic.com",                               "apiKey": "$ANTHROPIC_API_KEY" },
-    "openrouter":  { "baseUrl": "https://openrouter.ai/api/v1",                            "apiKey": "$OPENROUTER_API_KEY" },
-    "gemini":      { "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",  "apiKey": "$GEMINI_API_KEY" },
-    "groq":        { "baseUrl": "https://api.groq.com/openai/v1",                          "apiKey": "$GROQ_API_KEY" },
-    "mistral":     { "baseUrl": "https://api.mistral.ai/v1",                               "apiKey": "$MISTRAL_API_KEY" },
-    "deepseek":    { "baseUrl": "https://api.deepseek.com/v1",                             "apiKey": "$DEEPSEEK_API_KEY" }
+    "openai":      { "baseUrl": "https://api.openai.com/v1",                              "apiKey": "sk-..." },
+    "anthropic":   { "baseUrl": "https://api.anthropic.com",                               "apiKey": "sk-ant-..." },
+    "openrouter":  { "baseUrl": "https://openrouter.ai/api/v1",                            "apiKey": "sk-or-..." },
+    "gemini":      { "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",  "apiKey": "AIza..." },
+    "groq":        { "baseUrl": "https://api.groq.com/openai/v1",                          "apiKey": "gsk_..." },
+    "mistral":     { "baseUrl": "https://api.mistral.ai/v1",                               "apiKey": "..." },
+    "deepseek":    { "baseUrl": "https://api.deepseek.com/v1",                             "apiKey": "sk-..." }
   }
 }
 ```

@@ -14,17 +14,6 @@ struct ServerConfig: Codable, Sendable {
 struct ProviderConfig: Codable, Sendable {
     var baseUrl: String
     var apiKey: String?
-
-    /// Resolve the API key. `$VAR` syntax reads from process environment, but
-    /// GUI apps launched from Finder/Login Items don't inherit shell profile
-    /// vars — use literal keys in config.json for reliable operation.
-    var resolvedApiKey: String? {
-        guard let key = apiKey, !key.isEmpty else { return nil }
-        if key.hasPrefix("$") {
-            return ProcessInfo.processInfo.environment[String(key.dropFirst())]
-        }
-        return key
-    }
 }
 
 class ConfigManager: @unchecked Sendable {

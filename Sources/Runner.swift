@@ -46,7 +46,7 @@ final class CommandRunner: Sendable {
         for (name, provider) in ConfigManager.shared.config.providers {
             let prefix = "TETRA_\(name.uppercased())"
             env["\(prefix)_URL"] = provider.baseUrl
-            if let key = provider.resolvedApiKey {
+            if let key = provider.apiKey, !key.isEmpty {
                 env["\(prefix)_KEY"] = key
             }
         }
@@ -129,7 +129,6 @@ final class CommandRunner: Sendable {
         writeScript("Uppercase.sh", "#!/bin/bash\ntr '[:lower:]' '[:upper:]'")
         writeScript("Lowercase.sh", "#!/bin/bash\ntr '[:upper:]' '[:lower:]'")
         writeScript("Trim.sh", "#!/bin/bash\nsed 's/^[[:space:]]*//;s/[[:space:]]*$//'")
-        if let (name, body) = detectGrammarScript() { writeScript(name, body) }
     }
 
     private func writeScript(_ name: String, _ content: String) {
@@ -137,34 +136,6 @@ final class CommandRunner: Sendable {
         guard !FileManager.default.fileExists(atPath: url.path) else { return }
         try? content.write(to: url, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-    }
-
-    private func detectGrammarScript() -> (String, String)? {
-        let env = ProcessInfo.processInfo.environment
-        let oai: [(key: String, prefix: String, model: String)] = [
-            ("OPENROUTER_API_KEY", "OPENROUTER", "google/gemma-4-26b-a4b-it"),
-            ("GEMINI_API_KEY",     "GEMINI",     "gemini-2.5-flash-lite"),
-            ("OPENAI_API_KEY",     "OPENAI",     "gpt-4.1-mini"),
-            ("GROQ_API_KEY",       "GROQ",       "llama-3.3-70b-versatile"),
-        ]
-        let sys = "Fix grammar and spelling. Return ONLY the corrected text."
-        if let p = oai.first(where: { !(env[$0.key] ?? "").isEmpty }) {
-            return ("Fix grammar.sh", """
-            #!/bin/bash
-            jq -Rsn --arg t "$(cat)" '{"model":"\(p.model)","messages":[{"role":"system","content":"\(sys)"},{"role":"user","content":$t}],"temperature":0.3}' \
-            | curl -s "$TETRA_\(p.prefix)_URL/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $TETRA_\(p.prefix)_KEY" -d @- \
-            | jq -r '.choices[0].message.content // empty'
-            """)
-        }
-        if !(env["ANTHROPIC_API_KEY"] ?? "").isEmpty {
-            return ("Fix grammar.sh", """
-            #!/bin/bash
-            jq -Rsn --arg t "$(cat)" '{"model":"claude-haiku-4-5-20251001","max_tokens":1024,"system":"\(sys)","messages":[{"role":"user","content":$t}]}' \
-            | curl -s "$TETRA_ANTHROPIC_URL/v1/messages" -H "Content-Type: application/json" -H "x-api-key: $TETRA_ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -d @- \
-            | jq -r '.content[0].text // empty'
-            """)
-        }
-        return nil
     }
 
     private func findScript(named name: String) -> URL? {
