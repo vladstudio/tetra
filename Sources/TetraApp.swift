@@ -239,6 +239,10 @@ struct MenuBarView: View {
             NSWorkspace.shared.open(path)
         }
 
+        Button("Reload Config") {
+            ConfigManager.shared.reload()
+        }
+
         Toggle("Start at Login", isOn: $launchAtLogin)
             .onChange(of: launchAtLogin) { _, on in
                 if on { LoginItem.enable() } else { LoginItem.disable() }
