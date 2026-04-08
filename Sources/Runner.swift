@@ -111,8 +111,13 @@ final class CommandRunner: Sendable {
                 }
 
                 let result = String(data: outData, encoding: .utf8)?
-                    .trimmingCharacters(in: .newlines) ?? ""
-                continuation.resume(returning: result)
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if result.isEmpty {
+                    let stderr = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    continuation.resume(throwing: TetraError.commandFailed(command, stderr.isEmpty ? "Command produced no output" : stderr))
+                } else {
+                    continuation.resume(returning: result)
+                }
             }
         }
     }
@@ -146,7 +151,7 @@ final class CommandRunner: Sendable {
             #!/bin/bash
             jq -Rsn --arg t "$(cat)" '{"model":"\(p.model)","messages":[{"role":"system","content":"\(sys)"},{"role":"user","content":$t}],"temperature":0.3}' \
             | curl -s "$TETRA_\(p.prefix)_URL/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $TETRA_\(p.prefix)_KEY" -d @- \
-            | jq -r '.choices[0].message.content'
+            | jq -r '.choices[0].message.content // empty'
             """)
         }
         if !(env["ANTHROPIC_API_KEY"] ?? "").isEmpty {
@@ -154,7 +159,7 @@ final class CommandRunner: Sendable {
             #!/bin/bash
             jq -Rsn --arg t "$(cat)" '{"model":"claude-haiku-4-5-20251001","max_tokens":1024,"system":"\(sys)","messages":[{"role":"user","content":$t}]}' \
             | curl -s "$TETRA_ANTHROPIC_URL/v1/messages" -H "Content-Type: application/json" -H "x-api-key: $TETRA_ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -d @- \
-            | jq -r '.content[0].text'
+            | jq -r '.content[0].text // empty'
             """)
         }
         return nil

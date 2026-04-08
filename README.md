@@ -39,7 +39,7 @@ curl -X POST http://localhost:24100/transform \
 
 ## Configuration
 
-Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TETRA_<NAME>_URL` and `TETRA_<NAME>_KEY` environment variables. API keys starting with `$` are resolved from environment variables.
+Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TETRA_<NAME>_URL` and `TETRA_<NAME>_KEY` environment variables. API keys starting with `$` are resolved from environment variables. Note: macOS GUI apps don't inherit shell environment variables, so `$` references only work if the variable is set via `launchctl setenv`. For reliability, use the literal key value directly.
 
 ```json
 {
@@ -89,7 +89,7 @@ jq -Rsn --arg t "$(cat)" --arg s "$SYSTEM" '{
   temperature: 0.3
 }' | curl -s "${TETRA_OLLAMA_URL:-http://localhost:11434/v1}/chat/completions" \
   -H "Content-Type: application/json" ${TETRA_OLLAMA_KEY:+-H "Authorization: Bearer $TETRA_OLLAMA_KEY"} -d @- \
-| jq -r '.choices[0].message.content'
+| jq -r '.choices[0].message.content // empty'
 ```
 
 `Translate.sh` (using OpenRouter):
@@ -102,7 +102,7 @@ jq -Rsn --arg t "$(cat)" '{
   temperature: 0.3
 }' | curl -s "$TETRA_OPENROUTER_URL/chat/completions" \
   -H "Content-Type: application/json" -H "Authorization: Bearer $TETRA_OPENROUTER_KEY" -d @- \
-| jq -r '.choices[0].message.content'
+| jq -r '.choices[0].message.content // empty'
 ```
 
 ### LLM-powered (Anthropic)
@@ -118,5 +118,5 @@ jq -Rsn --arg t "$(cat)" '{
   messages: [{role:"user", content: ("Summarize concisely:\n\n" + $t)}]
 }' | curl -s "$TETRA_ANTHROPIC_URL/v1/messages" \
   -H "Content-Type: application/json" -H "x-api-key: $TETRA_ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -d @- \
-| jq -r '.content[0].text'
+| jq -r '.content[0].text // empty'
 ```
