@@ -15,6 +15,9 @@ struct ProviderConfig: Codable, Sendable {
     var baseUrl: String
     var apiKey: String?
 
+    /// Resolve the API key. `$VAR` syntax reads from process environment, but
+    /// GUI apps launched from Finder/Login Items don't inherit shell profile
+    /// vars — use literal keys in config.json for reliable operation.
     var resolvedApiKey: String? {
         guard let key = apiKey, !key.isEmpty else { return nil }
         if key.hasPrefix("$") {
@@ -51,7 +54,7 @@ class ConfigManager: @unchecked Sendable {
     }
 
     private func load() {
-        dispatchPrecondition(condition: .onQueue(.main))
+        if !Thread.isMainThread { DispatchQueue.main.sync { self.load() }; return }
         if !FileManager.default.fileExists(atPath: configFile.path) {
             createDefaultConfig()
         }

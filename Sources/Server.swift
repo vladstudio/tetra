@@ -52,6 +52,7 @@ final class TetraServer: @unchecked Sendable {
         @Sendable func readMore() {
             conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
                 if let data = data { buffer.data.append(data) }
+                guard buffer.data.count < 10_000_000 else { timeout.cancel(); conn.cancel(); return }
 
                 if let req = self?.parseHTTP(buffer.data), self?.hasFullBody(buffer.data) == true {
                     timeout.cancel()

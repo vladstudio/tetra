@@ -73,6 +73,10 @@ final class CommandPicker: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, 
     // MARK: - Show / Dismiss
 
     func show() {
+        guard Permissions.isGranted(.accessibility) else {
+            Permissions.openSettings(.accessibility)
+            return
+        }
         Task {
             guard let text = await ContextCapture.captureSelected(), !text.isEmpty else {
                 NSSound.beep()

@@ -20,6 +20,7 @@ final class AppStatus {
     var configError: String?
     var serverError: String?
     var hotkeyError: String?
+    var lastError: String?
     var port: Int = 24100
     var hotkey: String = "ctrl+option+t"
 }
@@ -89,8 +90,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Start server
-        activePort = UInt16(config.server.port)
-        AppStatus.shared.serverError = server.start(port: activePort)
+        if (1...65535).contains(config.server.port) {
+            activePort = UInt16(config.server.port)
+            AppStatus.shared.serverError = server.start(port: activePort)
+        } else {
+            AppStatus.shared.serverError = "Invalid port: \(config.server.port)"
+        }
 
         // Register hotkey
         HotkeyManager.onHotkey = {
@@ -104,11 +109,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConfigManager.shared.onChange = { [weak self] in
             guard let self else { return }
             let c = ConfigManager.shared.config
-            let newPort = UInt16(c.server.port)
-            if newPort != self.activePort {
-                self.server.stop()
-                AppStatus.shared.serverError = self.server.start(port: newPort)
-                self.activePort = newPort
+            if (1...65535).contains(c.server.port) {
+                let newPort = UInt16(c.server.port)
+                if newPort != self.activePort {
+                    self.server.stop()
+                    AppStatus.shared.serverError = self.server.start(port: newPort)
+                    self.activePort = newPort
+                }
+            } else {
+                AppStatus.shared.serverError = "Invalid port: \(c.server.port)"
             }
             AppStatus.shared.hotkeyError = self.hotkeyManager.register(hotkey: c.hotkey)
             AppStatus.shared.port = c.server.port
@@ -138,10 +147,8 @@ func runCommand(command: String, text: String) async {
         }
         TextInjector.inject(result)
     } catch {
-        let alert = NSAlert()
-        alert.messageText = "Command failed"
-        alert.informativeText = error.localizedDescription
-        alert.runModal()
+        AppStatus.shared.lastError = error.localizedDescription
+        NSSound.beep()
     }
 }
 
@@ -181,7 +188,12 @@ struct MenuBarView: View {
             Text("Hotkey: \(err)").font(.caption).foregroundStyle(.red)
         }
 
-        if status.serverError != nil || status.hotkeyError != nil {
+        if let err = status.lastError {
+            Text(err).font(.caption).foregroundStyle(.red)
+            Button("Dismiss") { AppStatus.shared.lastError = nil }
+        }
+
+        if status.serverError != nil || status.hotkeyError != nil || status.lastError != nil {
             Divider()
         }
 
@@ -217,7 +229,9 @@ struct MenuBarView: View {
         Divider()
 
         Button("Open Commands Folder...") {
-            NSWorkspace.shared.open(CommandRunner.shared.commandsDir)
+            let dir = CommandRunner.shared.commandsDir
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(dir)
         }
 
         Button("Open Config...") {

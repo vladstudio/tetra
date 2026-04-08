@@ -6,12 +6,14 @@ enum TetraError: LocalizedError {
     case unknownCommand(String)
     case commandFailed(String, String)
     case commandTimeout(String)
+    case tooManyProcesses
 
     var errorDescription: String? {
         switch self {
         case .unknownCommand(let name): return "Unknown command: \(name)"
         case .commandFailed(let name, let stderr): return "\(name): \(stderr)"
         case .commandTimeout(let name): return "\(name): timed out after 30s"
+        case .tooManyProcesses: return "Too many commands running — try again shortly"
         }
     }
 }
@@ -20,6 +22,7 @@ final class CommandRunner: Sendable {
     static let shared = CommandRunner()
 
     let commandsDir = ConfigDir.url(for: "tetra").appendingPathComponent("commands")
+    private let activeCount = OSAllocatedUnfairLock(initialState: 0)
 
     func listCommands() -> [String] {
         guard let files = try? FileManager.default.contentsOfDirectory(
@@ -31,6 +34,10 @@ final class CommandRunner: Sendable {
     }
 
     func run(command: String, input: String, extraEnv: [String: String]? = nil, onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
+        let count = activeCount.withLock { $0 += 1; return $0 }
+        defer { activeCount.withLock { $0 -= 1 } }
+        guard count <= 8 else { throw TetraError.tooManyProcesses }
+
         guard let script = findScript(named: command) else {
             throw TetraError.unknownCommand(command)
         }
@@ -112,12 +119,7 @@ final class CommandRunner: Sendable {
 
                 let result = String(data: outData, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if result.isEmpty {
-                    let stderr = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    continuation.resume(throwing: TetraError.commandFailed(command, stderr.isEmpty ? "Command produced no output" : stderr))
-                } else {
-                    continuation.resume(returning: result)
-                }
+                continuation.resume(returning: result)
             }
         }
     }

@@ -20,14 +20,19 @@ enum TextInjector {
         down.post(tap: .cgAnnotatedSessionEventTap)
         up.post(tap: .cgAnnotatedSessionEventTap)
 
-        // Restore clipboard after paste completes
+        // Restore clipboard after paste completes — retry a few times for slow apps
         let changeCount = pb.changeCount
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            MainActor.assumeIsolated {
-                if NSPasteboard.general.changeCount == changeCount {
-                    snapshot.restore()
+        func tryRestore(_ attempt: Int = 0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                MainActor.assumeIsolated {
+                    if NSPasteboard.general.changeCount == changeCount {
+                        snapshot.restore()
+                    } else if attempt < 3 {
+                        tryRestore(attempt + 1)
+                    }
                 }
             }
         }
+        tryRestore()
     }
 }
