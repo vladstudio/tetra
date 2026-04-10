@@ -207,23 +207,12 @@ struct MenuBarView: View {
             Text("Running: \(running)...").foregroundStyle(.secondary)
             Button("Cancel") { CommandState.shared.cancel() }
         } else {
-            Section("Commands") {
+            Section("Transform selected text") {
                 ForEach(commands, id: \.self) { name in
                     Button(name) { transformSelection(command: name) }
                         .font(.system(.body, design: .monospaced))
                 }
             }
-        }
-
-        Divider()
-
-        if status.serverError == nil {
-            Text("Server: localhost:\(status.port)")
-                .font(.caption)
-        }
-        if status.hotkeyError == nil {
-            Text("Hotkey: \(status.hotkey)")
-                .font(.caption)
         }
 
         Divider()
@@ -251,6 +240,15 @@ struct MenuBarView: View {
 
         Button("About Tetra") {
             NSWorkspace.shared.open(URL(string: "https://apps.vlad.studio/tetra")!)
+        }
+
+        Divider()
+
+        if status.serverError == nil {
+            Text("Server: localhost:\(status.port)")
+        }
+        if status.hotkeyError == nil {
+            Text("Hotkey: \(status.hotkey)")
         }
 
         Divider()
