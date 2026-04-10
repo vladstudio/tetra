@@ -8,8 +8,10 @@ final class CommandState {
     var isRunning = false
     var runningCommand: String?
     var runningProcess: Process?
+    var runningTask: Task<Void, Never>?
     func cancel() {
         runningProcess?.terminate()
+        runningTask?.cancel()
     }
 }
 
@@ -134,22 +136,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 func runCommand(command: String, text: String) async {
-    CommandState.shared.isRunning = true
-    CommandState.shared.runningCommand = command
-    defer {
-        CommandState.shared.isRunning = false
-        CommandState.shared.runningCommand = nil
-        CommandState.shared.runningProcess = nil
-    }
-    do {
-        let result = try await CommandRunner.shared.run(command: command, input: text) { process in
-            DispatchQueue.main.async { CommandState.shared.runningProcess = process }
+    let task = Task {
+        CommandState.shared.isRunning = true
+        CommandState.shared.runningCommand = command
+        defer {
+            CommandState.shared.isRunning = false
+            CommandState.shared.runningCommand = nil
+            CommandState.shared.runningProcess = nil
+            CommandState.shared.runningTask = nil
         }
-        TextInjector.inject(result)
-    } catch {
-        AppStatus.shared.lastError = error.localizedDescription
-        NSSound.beep()
+        do {
+            let result = try await CommandRunner.shared.run(command: command, input: text) { process in
+                DispatchQueue.main.async { CommandState.shared.runningProcess = process }
+            }
+            guard !Task.isCancelled else { return }
+            TextInjector.inject(result)
+        } catch {
+            guard !Task.isCancelled else { return }
+            AppStatus.shared.lastError = error.localizedDescription
+            NSSound.beep()
+        }
     }
+    CommandState.shared.runningTask = task
+    await task.value
 }
 
 // MARK: - Menu Bar View
