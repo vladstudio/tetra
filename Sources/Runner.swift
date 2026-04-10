@@ -7,6 +7,9 @@ enum TetraError: LocalizedError {
     case commandFailed(String, String)
     case commandTimeout(String)
     case tooManyProcesses
+    case invalidPrompt(String)
+    case unknownLLM(String)
+    case llmFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +17,9 @@ enum TetraError: LocalizedError {
         case .commandFailed(let name, let stderr): return "\(name): \(stderr)"
         case .commandTimeout(let name): return "\(name): timed out after 30s"
         case .tooManyProcesses: return "Too many commands running — try again shortly"
+        case .invalidPrompt(let msg): return "Invalid prompt: \(msg)"
+        case .unknownLLM(let name): return "Unknown LLM: \(name)"
+        case .llmFailed(let msg): return "LLM request failed: \(msg)"
         }
     }
 }
@@ -27,37 +33,33 @@ final class CommandRunner: Sendable {
     func listCommands() -> [String] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: commandsDir, includingPropertiesForKeys: nil) else { return [] }
-        return files
+        let names = files
             .filter { !$0.lastPathComponent.hasPrefix(".") }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .sorted()
+            .map { commandName(for: $0) }
+        return Array(Set(names)).sorted()
     }
 
-    func run(command: String, input: String, extraEnv: [String: String]? = nil, onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
+    func run(command: String, input: String, args: [String: String] = [:], onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
         let count = activeCount.withLock { $0 += 1; return $0 }
         defer { activeCount.withLock { $0 -= 1 } }
         guard count <= 8 else { throw TetraError.tooManyProcesses }
 
-        guard let script = findScript(named: command) else {
+        guard let commandFile = findCommand(named: command) else {
             throw TetraError.unknownCommand(command)
         }
 
-        var env = ProcessInfo.processInfo.environment
-        for (name, provider) in ConfigManager.shared.config.providers {
-            let prefix = "TETRA_\(name.uppercased())"
-            env["\(prefix)_URL"] = provider.baseUrl
-            if let key = provider.apiKey, !key.isEmpty {
-                env["\(prefix)_KEY"] = key
-            }
+        if isPromptCommand(commandFile) {
+            return try await PromptCommand.run(path: commandFile, input: input, args: args)
         }
-        if let extraEnv { env.merge(extraEnv) { _, new in new } }
+
+        let env = ProcessInfo.processInfo.environment
 
         let process = Process()
-        if let (exec, args) = interpreter(for: script) {
+        if let (exec, processArgs) = interpreter(for: commandFile) {
             process.executableURL = URL(fileURLWithPath: exec)
-            process.arguments = args
+            process.arguments = processArgs
         } else {
-            process.executableURL = script
+            process.executableURL = commandFile
         }
         process.environment = env
 
@@ -138,10 +140,29 @@ final class CommandRunner: Sendable {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
-    private func findScript(named name: String) -> URL? {
+    private func findCommand(named name: String) -> URL? {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: commandsDir, includingPropertiesForKeys: nil) else { return nil }
-        return files.first { $0.deletingPathExtension().lastPathComponent == name }
+        return files
+            .filter { !$0.lastPathComponent.hasPrefix(".") }
+            .sorted { commandPriority($0) < commandPriority($1) }
+            .first { commandName(for: $0) == name }
+    }
+
+    private func commandPriority(_ url: URL) -> Int {
+        isPromptCommand(url) ? 0 : 1
+    }
+
+    private func isPromptCommand(_ url: URL) -> Bool {
+        url.lastPathComponent.lowercased().hasSuffix(".prompt.md")
+    }
+
+    private func commandName(for url: URL) -> String {
+        let name = url.lastPathComponent
+        if name.lowercased().hasSuffix(".prompt.md") {
+            return String(name.dropLast(".prompt.md".count))
+        }
+        return url.deletingPathExtension().lastPathComponent
     }
 
     private func interpreter(for path: URL) -> (String, [String])? {

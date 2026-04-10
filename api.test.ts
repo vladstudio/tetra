@@ -33,14 +33,14 @@ describe("POST /transform", () => {
     expect(res.status).toBe(400);
   });
 
-  test("passes extra env to command", async () => {
+  test("accepts extra args", async () => {
     const res = await fetch(`${BASE}/transform`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         command: "Uppercase",
         text: "hello",
-        env: { CUSTOM_VAR: "test_value" },
+        args: { context: "test_value" },
       }),
     });
     expect(res.status).toBe(200);

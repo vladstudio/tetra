@@ -4,9 +4,9 @@
 
 A macOS menu bar app that transforms selected text using custom commands.
 
-Press a global hotkey (default: Ctrl+Option+T), pick a command from a searchable list, and the transformed text replaces your selection. Ships with basics like uppercase, lowercase, and trim — add your own by dropping scripts into `~/.config/tetra/commands/`.
+Press a global hotkey (default: Ctrl+Option+T), pick a command from a searchable list, and the transformed text replaces your selection. Drop commands into `~/.config/tetra/commands/`.
 
-Commands can be written in Bash, Python, Ruby, or Node. They receive text via stdin and output the result to stdout. A local HTTP API (`localhost:24100`) is also available for programmatic access.
+Commands can be simple scripts that receive text via stdin and output the result to stdout, or `.prompt.md` files that Tetra runs through a configured OpenAI-compatible LLM. A local HTTP API (`localhost:24100`) is also available for programmatic access.
 
 Requires macOS 15+. Built with Swift and SwiftUI.
 
@@ -19,7 +19,7 @@ Tetra runs an HTTP server on `localhost:24100` for programmatic access.
 **`GET /commands`** — list available commands:
 ```bash
 curl http://localhost:24100/commands
-# ["Fix grammar", "Lowercase", "Trim", "Uppercase"]
+# ["Fix With AI", "Lowercase", "Trim", "Uppercase"]
 ```
 
 **`POST /transform`** — run a command on text:
@@ -30,93 +30,96 @@ curl -X POST http://localhost:24100/transform \
 # {"result": "HELLO"}
 ```
 
-An optional `env` field passes extra environment variables to the command script:
+An optional `args` object passes named values to `.prompt.md` commands:
 ```bash
 curl -X POST http://localhost:24100/transform \
   -H "Content-Type: application/json" \
-  -d '{"command": "Fix grammar", "text": "helo wrld", "env": {"STEN_CONTEXT": "Dear colleague"}}'
+  -d '{"command": "Fix With AI", "text": "helo wrld", "args": {"context": "Dear colleague"}}'
 ```
 
 ## Configuration
 
-Edit `~/.config/tetra/config.json`. Each provider is exposed to commands as `TETRA_<NAME>_URL` and `TETRA_<NAME>_KEY` environment variables. Put your API keys directly in the config file.
+Edit `~/.config/tetra/config.json`. The `llms` object defines named OpenAI-compatible model configurations. Prompt commands reference one of these names in frontmatter.
 
 ```json
 {
   "hotkey": "ctrl+option+t",
   "server": { "port": 24100 },
-  "providers": {
-    "ollama":      { "baseUrl": "http://localhost:11434/v1" },
-    "openai":      { "baseUrl": "https://api.openai.com/v1",                              "apiKey": "sk-..." },
-    "anthropic":   { "baseUrl": "https://api.anthropic.com",                               "apiKey": "sk-ant-..." },
-    "openrouter":  { "baseUrl": "https://openrouter.ai/api/v1",                            "apiKey": "sk-or-..." },
-    "gemini":      { "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",  "apiKey": "AIza..." },
-    "groq":        { "baseUrl": "https://api.groq.com/openai/v1",                          "apiKey": "gsk_..." },
-    "mistral":     { "baseUrl": "https://api.mistral.ai/v1",                               "apiKey": "..." },
-    "deepseek":    { "baseUrl": "https://api.deepseek.com/v1",                             "apiKey": "sk-..." }
+  "llms": {
+    "local-gemma": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "gemma3:4b"
+    },
+    "groq-llama": {
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "apiKey": "gsk_...",
+      "model": "llama-3.3-70b-versatile"
+    }
   }
 }
 ```
 
-Only include the providers you use. Ollama needs no API key.
+Only include the LLMs you use. Local Ollama-compatible endpoints usually do not need an API key.
 
 ## Commands
 
-Drop scripts into `~/.config/tetra/commands/`. The filename (minus extension) becomes the command name. Scripts receive text via stdin and output the result to stdout. Any language works — Bash, Python, Ruby, Node, or anything else you have installed. Here are some examples:
+Drop scripts or prompt files into `~/.config/tetra/commands/`. For scripts, the filename minus extension becomes the command name. For prompt commands, `.prompt.md` is removed from the filename.
 
-### Local (no LLM)
+### Local Scripts
 
-`Uppercase.sh` / `Lowercase.sh` / `Trim.sh`:
+Scripts receive text via stdin and output the transformed text to stdout. Any executable language works; `.sh`, `.py`, `.rb`, and `.js` get a default interpreter.
+
+`Uppercase.sh`:
 ```bash
 #!/bin/bash
 tr '[:lower:]' '[:upper:]'
 ```
 
-### LLM-powered (OpenAI-compatible)
-
-Most providers (OpenAI, Ollama, OpenRouter, Gemini, Groq, Mistral, DeepSeek) share the same API. Change the env var prefix and model to switch providers. Requires `jq` (`brew install jq`).
-
-`Fix grammar.sh` — supports an optional `STEN_CONTEXT` env var for context-aware corrections (passed by [Sten](https://github.com/vladstudio/sten) and other apps via the `/transform` API's `env` field):
+`Trim.sh`:
 ```bash
 #!/bin/bash
-CONTEXT="${STEN_CONTEXT:-}"
-SYSTEM="You are given a speech-to-text transcription. Correct grammar, spelling, and misrecognized words. OUTPUT ONLY THE CORRECTED TEXT."
-[ -n "$CONTEXT" ] && SYSTEM="${SYSTEM} Consider nearby text for context: ${CONTEXT}"
-
-jq -Rsn --arg t "$(cat)" --arg s "$SYSTEM" '{
-  model: "gemma3:4b",
-  messages: [{role:"system", content:$s}, {role:"user", content:$t}],
-  temperature: 0.3
-}' | curl -s "${TETRA_OLLAMA_URL:-http://localhost:11434/v1}/chat/completions" \
-  -H "Content-Type: application/json" ${TETRA_OLLAMA_KEY:+-H "Authorization: Bearer $TETRA_OLLAMA_KEY"} -d @- \
-| jq -r '.choices[0].message.content // empty'
+sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 ```
 
-`Translate.sh` (using OpenRouter):
-```bash
-#!/bin/bash
-jq -Rsn --arg t "$(cat)" '{
-  model: "openai/gpt-4.1-mini",
-  messages: [{role:"system", content:"Translate to English. Return ONLY the translated text."},
-             {role:"user", content:$t}],
-  temperature: 0.3
-}' | curl -s "$TETRA_OPENROUTER_URL/chat/completions" \
-  -H "Content-Type: application/json" -H "Authorization: Bearer $TETRA_OPENROUTER_KEY" -d @- \
-| jq -r '.choices[0].message.content // empty'
+### Prompt Commands
+
+Prompt commands are `.prompt.md` files. Tetra renders `{{text}}` and any values from the API `args` object, then sends the prompt to the configured LLM.
+
+`Fix With AI.prompt.md`:
+```text
+---
+llm: groq-llama
+temperature: 0.3
+---
+
+Fix grammar, spelling, and misrecognized words in the provided speech-to-text transcription.
+Keep the original language.
+Remove filler words and mumbling.
+
+{{#context}}
+Context:
+{{context}}
+{{/context}}
+
+Text:
+{{text}}
+
+OUTPUT ONLY THE CORRECTED TEXT.
 ```
 
-### LLM-powered (Anthropic)
+`Commit message.prompt.md`:
+```text
+---
+llm: groq-gpt-oss
+temperature: 0.3
+---
 
-Anthropic uses a different API format:
+Write a concise, human-friendly, meaningful git commit message for this diff.
+Imperative mood, single line, under 80 characters.
+No quotes around the message.
 
-`Summarize.sh`:
-```bash
-#!/bin/bash
-jq -Rsn --arg t "$(cat)" '{
-  model: "claude-sonnet-4-20250514",
-  max_tokens: 4096,
-  messages: [{role:"user", content: ("Summarize concisely:\n\n" + $t)}]
-}' | curl -s "$TETRA_ANTHROPIC_URL/v1/messages" \
-  -H "Content-Type: application/json" -H "x-api-key: $TETRA_ANTHROPIC_KEY" -H "anthropic-version: 2023-06-01" -d @- \
-| jq -r '.content[0].text // empty'
+Diff:
+{{text}}
+
+OUTPUT ONLY THE COMMIT MESSAGE.
 ```

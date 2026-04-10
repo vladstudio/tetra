@@ -3,16 +3,30 @@ import MacAppKit
 
 struct TetraConfig: Codable, Sendable {
     var server: ServerConfig = ServerConfig()
-    var providers: [String: ProviderConfig] = [:]
+    var llms: [String: LLMConfig] = [:]
     var hotkey: String = "ctrl+option+t"
+
+    init(server: ServerConfig = ServerConfig(), llms: [String: LLMConfig] = [:], hotkey: String = "ctrl+option+t") {
+        self.server = server
+        self.llms = llms
+        self.hotkey = hotkey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        server = try container.decodeIfPresent(ServerConfig.self, forKey: .server) ?? ServerConfig()
+        llms = try container.decodeIfPresent([String: LLMConfig].self, forKey: .llms) ?? [:]
+        hotkey = try container.decodeIfPresent(String.self, forKey: .hotkey) ?? "ctrl+option+t"
+    }
 }
 
 struct ServerConfig: Codable, Sendable {
     var port: Int = 24100
 }
 
-struct ProviderConfig: Codable, Sendable {
+struct LLMConfig: Codable, Sendable {
     var baseUrl: String
+    var model: String
     var apiKey: String?
 }
 
@@ -71,8 +85,8 @@ class ConfigManager: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         let defaultConfig = TetraConfig(
             server: ServerConfig(port: 24100),
-            providers: [
-                "ollama": ProviderConfig(baseUrl: "http://localhost:11434/v1"),
+            llms: [
+                "local-gemma": LLMConfig(baseUrl: "http://localhost:11434/v1", model: "gemma3:4b"),
             ]
         )
         let encoder = JSONEncoder()
