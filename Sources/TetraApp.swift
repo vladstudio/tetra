@@ -141,6 +141,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 func runCommand(command: String, text: String) async {
+    guard !CommandState.shared.isRunning else {
+        NSSound.beep()
+        return
+    }
     let task = Task {
         CommandState.shared.isRunning = true
         CommandState.shared.runningCommand = command

@@ -76,12 +76,17 @@ enum PromptCommand {
             return output
         }
         let matches = regex.matches(in: output, range: NSRange(output.startIndex..., in: output))
-        for match in matches.reversed() {
+        var result = ""
+        var cursor = output.startIndex
+        for match in matches {
             guard let whole = Range(match.range(at: 0), in: output),
                   let keyRange = Range(match.range(at: 1), in: output) else { continue }
-            output.replaceSubrange(whole, with: values[String(output[keyRange])] ?? "")
+            result += output[cursor..<whole.lowerBound]
+            result += values[String(output[keyRange])] ?? ""
+            cursor = whole.upperBound
         }
-        return output
+        result += output[cursor...]
+        return result
     }
 
     private static func complete(llm: LLMConfig, prompt: String, temperature: Double?) async throws -> String {
@@ -90,7 +95,7 @@ enum PromptCommand {
             throw TetraError.llmFailed("invalid base URL")
         }
 
-        var request = URLRequest(url: url, timeoutInterval: 30)
+        var request = URLRequest(url: url, timeoutInterval: 120)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key = llm.apiKey, !key.isEmpty {

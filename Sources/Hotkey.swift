@@ -3,7 +3,7 @@ import CoreGraphics
 
 @MainActor
 class HotkeyManager {
-    private var eventTap: CFMachPort?
+    private nonisolated(unsafe) var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private nonisolated(unsafe) var keyCode: UInt16 = 0
     private nonisolated(unsafe) var modifiers: CGEventFlags = []
@@ -80,7 +80,9 @@ class HotkeyManager {
         let pass = Unmanaged.passUnretained(event)
 
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.unregister() } }
+            if let tap = self.eventTap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
             return pass
         }
 

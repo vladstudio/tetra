@@ -97,12 +97,12 @@ final class CommandRunner: Sendable {
                 let group = DispatchGroup()
                 group.enter()
                 DispatchQueue.global().async {
-                    outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    outData = CommandRunner.readPipe(stdoutPipe.fileHandleForReading)
                     group.leave()
                 }
                 group.enter()
                 DispatchQueue.global().async {
-                    errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    errData = CommandRunner.readPipe(stderrPipe.fileHandleForReading)
                     group.leave()
                 }
                 group.wait()
@@ -173,5 +173,18 @@ final class CommandRunner: Sendable {
         case "js":         return ("/usr/bin/env", ["node", path.path])
         default:           return nil
         }
+    }
+
+    private static let maxOutput = 10_000_000 // 10 MB
+
+    private static func readPipe(_ fh: FileHandle) -> Data {
+        var data = Data()
+        while data.count < maxOutput {
+            let chunk = fh.readData(ofLength: min(65536, maxOutput - data.count))
+            if chunk.isEmpty { break }
+            data.append(chunk)
+        }
+        while !fh.readData(ofLength: 65536).isEmpty {} // drain to avoid pipe deadlock
+        return data
     }
 }

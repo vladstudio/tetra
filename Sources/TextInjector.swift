@@ -25,9 +25,9 @@ enum TextInjector {
         func tryRestore(_ attempt: Int = 0) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 MainActor.assumeIsolated {
-                    if NSPasteboard.general.changeCount == changeCount {
+                    if NSPasteboard.general.changeCount == changeCount || attempt >= 3 {
                         snapshot.restore()
-                    } else if attempt < 3 {
+                    } else {
                         tryRestore(attempt + 1)
                     }
                 }
