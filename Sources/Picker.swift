@@ -72,6 +72,15 @@ final class CommandPicker: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, 
 
     // MARK: - Show / Dismiss
 
+    func showFromMenu() {
+        guard Permissions.isGranted(.accessibility) else {
+            Permissions.openSettings(.accessibility)
+            return
+        }
+        capturedText = nil
+        showPanel()
+    }
+
     func show() {
         guard Permissions.isGranted(.accessibility) else {
             Permissions.openSettings(.accessibility)
@@ -111,11 +120,21 @@ final class CommandPicker: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, 
         let row = table.selectedRow
         guard row >= 0, row < filtered.count else { return }
         let command = filtered[row]
-        guard let text = capturedText else { return }
+        let precaptured = capturedText
         dismiss()
         AppDelegate.previousApp?.activate()
         Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
+            let text: String
+            if let precaptured {
+                text = precaptured
+            } else {
+                guard let captured = await ContextCapture.captureSelected(), !captured.isEmpty else {
+                    NSSound.beep()
+                    return
+                }
+                text = captured
+            }
             await runCommand(command: command, text: text)
         }
     }

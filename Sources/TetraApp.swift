@@ -206,8 +206,7 @@ struct MenuBarView: View {
             Divider()
         }
 
-        let commands = CommandRunner.shared.listCommands()
-        if commands.isEmpty {
+        if CommandRunner.shared.listCommands().isEmpty {
             Text("No commands yet").foregroundStyle(.secondary)
             Button("Create Sample Commands...") {
                 CommandRunner.shared.createSampleCommands()
@@ -216,11 +215,8 @@ struct MenuBarView: View {
             Text("Running: \(running)...").foregroundStyle(.secondary)
             Button("Cancel") { CommandState.shared.cancel() }
         } else {
-            Section("Transform selected text") {
-                ForEach(commands, id: \.self) { name in
-                    Button(name) { transformSelection(command: name) }
-                        .font(.system(.body, design: .monospaced))
-                }
+            Button("Show Commands") {
+                CommandPicker.shared.showFromMenu()
             }
         }
 
@@ -268,16 +264,4 @@ struct MenuBarView: View {
             }
     }
 
-    private func transformSelection(command: String) {
-        guard let app = AppDelegate.previousApp else { return }
-        app.activate()
-        Task {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            guard let text = await ContextCapture.captureSelected(), !text.isEmpty else {
-                NSSound.beep()
-                return
-            }
-            await runCommand(command: command, text: text)
-        }
-    }
 }
