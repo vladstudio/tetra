@@ -4,7 +4,7 @@
 
 A macOS menu bar app that transforms selected text using custom commands.
 
-Press a global hotkey (default: Ctrl+Option+T), pick a command from a searchable list, and the transformed text replaces your selection. Drop commands into `~/.config/tetra/commands/`.
+Pick a command from a searchable list, and the transformed text replaces your selection. Drop commands into `~/.config/tetra/commands/`.
 
 Commands can be simple scripts that receive text via stdin and output the result to stdout, or `.prompt.md` files that Tetra runs through a configured OpenAI-compatible LLM. A local HTTP API (`localhost:24100`) is also available for programmatic access.
 
@@ -43,7 +43,6 @@ Edit `~/.config/tetra/config.json`. The `llms` object defines named OpenAI-compa
 
 ```json
 {
-  "hotkey": "ctrl+option+t",
   "server": { "port": 24100 },
   "llms": {
     "local-gemma": {

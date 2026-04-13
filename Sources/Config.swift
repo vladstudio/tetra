@@ -4,19 +4,16 @@ import MacAppKit
 struct TetraConfig: Codable, Sendable {
     var server: ServerConfig = ServerConfig()
     var llms: [String: LLMConfig] = [:]
-    var hotkey: String = "ctrl+option+t"
 
-    init(server: ServerConfig = ServerConfig(), llms: [String: LLMConfig] = [:], hotkey: String = "ctrl+option+t") {
+    init(server: ServerConfig = ServerConfig(), llms: [String: LLMConfig] = [:]) {
         self.server = server
         self.llms = llms
-        self.hotkey = hotkey
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         server = try container.decodeIfPresent(ServerConfig.self, forKey: .server) ?? ServerConfig()
         llms = try container.decodeIfPresent([String: LLMConfig].self, forKey: .llms) ?? [:]
-        hotkey = try container.decodeIfPresent(String.self, forKey: .hotkey) ?? "ctrl+option+t"
     }
 }
 

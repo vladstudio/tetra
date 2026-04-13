@@ -21,10 +21,8 @@ final class AppStatus {
     static let shared = AppStatus()
     var configError: String?
     var serverError: String?
-    var hotkeyError: String?
     var lastError: String?
     var port: Int = 24100
-    var hotkey: String = "ctrl+option+t"
 }
 
 @main
@@ -51,7 +49,6 @@ struct TetraApp: App {
     private var hasError: Bool {
         appStatus.configError != nil
             || appStatus.serverError != nil
-            || appStatus.hotkeyError != nil
     }
 
     var body: some Scene {
@@ -70,7 +67,6 @@ struct TetraApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static var previousApp: NSRunningApplication?
     private var server = TetraServer()
-    private var hotkeyManager = HotkeyManager()
     private var activePort: UInt16 = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -99,13 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             AppStatus.shared.serverError = "Invalid port: \(config.server.port)"
         }
 
-        // Register hotkey
-        HotkeyManager.onHotkey = {
-            CommandPicker.shared.show()
-        }
-        AppStatus.shared.hotkeyError = hotkeyManager.register(hotkey: config.hotkey)
         AppStatus.shared.port = config.server.port
-        AppStatus.shared.hotkey = config.hotkey
 
         // Watch config for changes
         ConfigManager.shared.onChange = { [weak self] in
@@ -121,9 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 AppStatus.shared.serverError = "Invalid port: \(c.server.port)"
             }
-            AppStatus.shared.hotkeyError = self.hotkeyManager.register(hotkey: c.hotkey)
             AppStatus.shared.port = c.server.port
-            AppStatus.shared.hotkey = c.hotkey
             print("[Tetra] Config reloaded")
         }
 
@@ -202,16 +190,12 @@ struct MenuBarView: View {
             Text("Server: \(err)").font(.caption).foregroundStyle(.red)
         }
 
-        if let err = status.hotkeyError {
-            Text("Hotkey: \(err)").font(.caption).foregroundStyle(.red)
-        }
-
         if let err = status.lastError {
             Text(err).font(.caption).foregroundStyle(.red)
             Button("Dismiss") { AppStatus.shared.lastError = nil }
         }
 
-        if status.serverError != nil || status.hotkeyError != nil || status.lastError != nil {
+        if status.serverError != nil || status.lastError != nil {
             Divider()
         }
 
@@ -261,10 +245,6 @@ struct MenuBarView: View {
         if status.serverError == nil {
             Text("Server: localhost:\(status.port)")
         }
-        if status.hotkeyError == nil {
-            Text("Hotkey: \(status.hotkey)")
-        }
-
         Divider()
 
         Button("Quit") { NSApp.terminate(nil) }
