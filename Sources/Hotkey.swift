@@ -1,10 +1,12 @@
 import AppKit
-import Carbon.HIToolbox
+import CoreGraphics
 
 @MainActor
 class HotkeyManager {
-    private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private nonisolated(unsafe) var keyCode: UInt16 = 0
+    private nonisolated(unsafe) var modifiers: CGEventFlags = []
     static var onHotkey: (() -> Void)?
 
     nonisolated init() {}
@@ -19,64 +21,87 @@ class HotkeyManager {
             return "Invalid hotkey format: \(hotkey)"
         }
 
-        guard let keyCode = Self.keyCodes[keyName] else {
-            print("[Tetra] Unknown key: \(keyName)")
+        guard let code = Self.keyCodes[keyName] else {
             return "Unknown key: \(keyName)"
         }
 
-        var modifiers: UInt32 = 0
+        var mods: CGEventFlags = []
         for mod in parts.dropLast() {
             switch mod {
-            case "ctrl", "control": modifiers |= UInt32(controlKey)
-            case "option", "alt": modifiers |= UInt32(optionKey)
-            case "shift": modifiers |= UInt32(shiftKey)
-            case "cmd", "command": modifiers |= UInt32(cmdKey)
+            case "ctrl", "control": mods.insert(.maskControl)
+            case "option", "alt": mods.insert(.maskAlternate)
+            case "shift": mods.insert(.maskShift)
+            case "cmd", "command": mods.insert(.maskCommand)
             default: return "Unknown modifier: \(mod)"
             }
         }
 
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed))
+        keyCode = code
+        modifiers = mods
 
-        let installStatus = InstallEventHandler(
-            GetApplicationEventTarget(),
-            { (_, _, _) -> OSStatus in
-                MainActor.assumeIsolated {
-                    HotkeyManager.onHotkey?()
-                }
-                return noErr
-            },
-            1, &eventType, nil, &handlerRef)
+        let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
 
-        guard installStatus == noErr else {
-            return "Failed to install event handler (OSStatus \(installStatus))"
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: eventMask,
+            callback: hotkeyTapCallback,
+            userInfo: userInfo
+        ) else {
+            return "Failed to create event tap (accessibility permission needed)"
         }
 
-        let hotKeyID = EventHotKeyID(signature: 0x54_45_54_52, id: 1) // "TETR"
-        let registerStatus = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        guard registerStatus == noErr else {
-            return "Failed to register hotkey (OSStatus \(registerStatus))"
-        }
+        eventTap = tap
+        let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
+        runLoopSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
 
         print("[Tetra] Hotkey registered: \(hotkey)")
         return nil
     }
 
     func unregister() {
-        if let ref = hotKeyRef {
-            UnregisterEventHotKey(ref)
-            hotKeyRef = nil
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
         }
-        if let ref = handlerRef {
-            RemoveEventHandler(ref)
-            handlerRef = nil
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            runLoopSource = nil
         }
+        eventTap = nil
+    }
+
+    fileprivate nonisolated func handleEvent(
+        proxy: CGEventTapProxy, type: CGEventType, event: CGEvent
+    ) -> Unmanaged<CGEvent>? {
+        let pass = Unmanaged.passUnretained(event)
+
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.unregister() } }
+            return pass
+        }
+
+        guard type == .keyDown else { return pass }
+
+        let code = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let flags = event.flags.intersection([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+
+        guard code == keyCode, flags == modifiers else { return pass }
+
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                HotkeyManager.onHotkey?()
+            }
+        }
+        return nil
     }
 
     // MARK: - Virtual key codes (US keyboard layout)
 
-    private static let keyCodes: [String: UInt32] = [
+    private static let keyCodes: [String: UInt16] = [
         "a": 0x00, "s": 0x01, "d": 0x02, "f": 0x03, "h": 0x04, "g": 0x05,
         "z": 0x06, "x": 0x07, "c": 0x08, "v": 0x09, "b": 0x0B, "q": 0x0C,
         "w": 0x0D, "e": 0x0E, "r": 0x0F, "y": 0x10, "t": 0x11, "1": 0x12,
@@ -85,4 +110,15 @@ class HotkeyManager {
         "p": 0x23, "l": 0x25, "j": 0x26, "k": 0x28, "n": 0x2D, "m": 0x2E,
         "space": 0x31,
     ]
+}
+
+private func hotkeyTapCallback(
+    proxy: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    userInfo: UnsafeMutableRawPointer?
+) -> Unmanaged<CGEvent>? {
+    guard let userInfo else { return Unmanaged.passUnretained(event) }
+    let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
+    return manager.handleEvent(proxy: proxy, type: type, event: event)
 }
