@@ -130,6 +130,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Prompt for Accessibility permission
         Permissions.request(.accessibility)
     }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        CommandPicker.shared.showFromMenu()
+        return false
+    }
 }
 
 // MARK: - Shared
