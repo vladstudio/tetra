@@ -53,11 +53,6 @@ class ConfigManager: @unchecked Sendable {
         watchFile()
     }
 
-    func reload() {
-        load()
-        DispatchQueue.main.async { MainActor.assumeIsolated { self.onChange?() } }
-    }
-
     private func load() {
         if !Thread.isMainThread { DispatchQueue.main.sync { self.load() }; return }
         if !FileManager.default.fileExists(atPath: configFile.path) {
