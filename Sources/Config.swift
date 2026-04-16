@@ -34,6 +34,7 @@ class ConfigManager: @unchecked Sendable {
     private let lock = NSLock()
     private let configDir: URL
     private let configFile: URL
+    private var dirMonitor: DispatchSourceFileSystemObject?
     private var fileMonitor: DispatchSourceFileSystemObject?
     private var debounceItem: DispatchWorkItem?
 
@@ -89,25 +90,45 @@ class ConfigManager: @unchecked Sendable {
     }
 
     private func watchFile() {
-        // Watch the directory, not the file — editors that do atomic saves
-        // (write tmp + rename) invalidate the fd on the old file.
+        // Watch the directory to catch atomic saves (write tmp + rename, which
+        // invalidates the file fd), and separately watch the file to catch
+        // in-place edits (which don't change the directory).
+        watchDir()
+        watchFileFd()
+    }
+
+    private func watchDir() {
         let fd = open(configDir.path, O_EVTONLY)
         guard fd >= 0 else { return }
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .rename], queue: .main)
-        source.setEventHandler { [weak self] in
-            guard let self else { return }
-            self.debounceItem?.cancel()
-            let item = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.load()
-                MainActor.assumeIsolated { self.onChange?() }
-            }
-            self.debounceItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
-        }
+        source.setEventHandler { [weak self] in self?.scheduleReload(rewatchFile: true) }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        dirMonitor = source
+    }
+
+    private func watchFileFd() {
+        fileMonitor?.cancel()
+        let fd = open(configFile.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename], queue: .main)
+        source.setEventHandler { [weak self] in self?.scheduleReload(rewatchFile: true) }
         source.setCancelHandler { close(fd) }
         source.resume()
         fileMonitor = source
+    }
+
+    private func scheduleReload(rewatchFile: Bool) {
+        debounceItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.load()
+            if rewatchFile { self.watchFileFd() }
+            MainActor.assumeIsolated { self.onChange?() }
+        }
+        debounceItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
     }
 }
