@@ -18,7 +18,7 @@ struct TetraConfig: Codable, Sendable {
 }
 
 struct ServerConfig: Codable, Sendable {
-    var port: Int = 24100
+    var port: Int = 73784
 }
 
 struct LLMConfig: Codable, Sendable {
@@ -77,7 +77,7 @@ class ConfigManager: @unchecked Sendable {
     private func createDefaultConfig() {
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         let defaultConfig = TetraConfig(
-            server: ServerConfig(port: 24100),
+            server: ServerConfig(port: 73784),
             llms: [
                 "local-gemma": LLMConfig(baseUrl: "http://localhost:11434/v1", model: "gemma3:4b"),
             ]

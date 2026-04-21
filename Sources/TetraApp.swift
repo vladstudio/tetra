@@ -22,7 +22,7 @@ final class AppStatus {
     var configError: String?
     var serverError: String?
     var lastError: String?
-    var port: Int = 24100
+    var port: Int = 73784
 }
 
 @main

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 
-const BASE = "http://localhost:24100";
+const BASE = "http://localhost:73784";
 
 describe("GET /commands", () => {
   test("returns array of command names", async () => {

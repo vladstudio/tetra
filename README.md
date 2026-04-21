@@ -6,7 +6,7 @@ A macOS menu bar app that transforms selected text using custom commands.
 
 Pick a command from a searchable list, and the transformed text replaces your selection. Drop commands into `~/.config/tetra/commands/`.
 
-Commands can be simple scripts that receive text via stdin and output the result to stdout, or `.prompt.md` files that Tetra runs through a configured OpenAI-compatible LLM. A local HTTP API (`localhost:24100`) is also available for programmatic access.
+Commands can be simple scripts that receive text via stdin and output the result to stdout, or `.prompt.md` files that Tetra runs through a configured OpenAI-compatible LLM. A local HTTP API (`localhost:73784`) is also available for programmatic access.
 
 Requires macOS 15+. Built with Swift and SwiftUI.
 
@@ -14,17 +14,17 @@ Requires macOS 15+. Built with Swift and SwiftUI.
 
 ## API
 
-Tetra runs an HTTP server on `localhost:24100` for programmatic access.
+Tetra runs an HTTP server on `localhost:73784` for programmatic access.
 
 **`GET /commands`** — list available commands:
 ```bash
-curl http://localhost:24100/commands
+curl http://localhost:73784/commands
 # ["Fix With AI", "Lowercase", "Trim", "Uppercase"]
 ```
 
 **`POST /transform`** — run a command on text:
 ```bash
-curl -X POST http://localhost:24100/transform \
+curl -X POST http://localhost:73784/transform \
   -H "Content-Type: application/json" \
   -d '{"command": "Uppercase", "text": "hello"}'
 # {"result": "HELLO"}
@@ -32,7 +32,7 @@ curl -X POST http://localhost:24100/transform \
 
 An optional `args` object passes named values to `.prompt.md` commands:
 ```bash
-curl -X POST http://localhost:24100/transform \
+curl -X POST http://localhost:73784/transform \
   -H "Content-Type: application/json" \
   -d '{"command": "Fix With AI", "text": "helo wrld", "args": {"context": "Dear colleague"}}'
 ```
@@ -43,7 +43,7 @@ Edit `~/.config/tetra/config.json`. The `llms` object defines named OpenAI-compa
 
 ```json
 {
-  "server": { "port": 24100 },
+  "server": { "port": 73784 },
   "llms": {
     "local-gemma": {
       "baseUrl": "http://localhost:11434/v1",
