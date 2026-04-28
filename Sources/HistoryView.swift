@@ -28,17 +28,17 @@ struct HistoryView: View {
     }
 
     private func row(_ e: HistoryEntry) -> some View {
-        HStack {
+        HStack(spacing: 6) {
             Image(systemName: e.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(e.ok ? .green : .red)
-            VStack(alignment: .leading) {
-                Text(e.command).font(.headline)
-                Text(e.timestamp, format: .dateTime.month().day().hour().minute().second())
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(e.source.rawValue).font(.caption2).foregroundStyle(.secondary)
+                .font(.caption)
+            Text(e.command).lineLimit(1)
+            Text(e.timestamp, format: .dateTime.hour().minute().second())
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Text(e.source.rawValue).foregroundStyle(.secondary)
         }
+        .font(.caption)
     }
 
     private func detail(_ e: HistoryEntry) -> some View {
