@@ -39,7 +39,19 @@ final class CommandRunner: Sendable {
         return Array(Set(names)).sorted()
     }
 
-    func run(command: String, input: String, args: [String: String] = [:], onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
+    func run(command: String, input: String, args: [String: String] = [:], source: HistoryEntry.Source = .picker, onProcess: (@Sendable (Process) -> Void)? = nil) async throws -> String {
+        let start = Date()
+        do {
+            let result = try await execute(command: command, input: input, args: args, onProcess: onProcess)
+            await History.shared.record(command: command, source: source, input: input, output: result, error: nil, start: start)
+            return result
+        } catch {
+            await History.shared.record(command: command, source: source, input: input, output: nil, error: error.localizedDescription, start: start)
+            throw error
+        }
+    }
+
+    private func execute(command: String, input: String, args: [String: String], onProcess: (@Sendable (Process) -> Void)?) async throws -> String {
         let count = activeCount.withLock { $0 += 1; return $0 }
         defer { activeCount.withLock { $0 -= 1 } }
         guard count <= 8 else { throw TetraError.tooManyProcesses }

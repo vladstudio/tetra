@@ -147,7 +147,7 @@ final class TetraServer: @unchecked Sendable {
                 CommandState.shared.isRunning = true
                 CommandState.shared.runningCommand = command
                 do {
-                    let result = try await CommandRunner.shared.run(command: command, input: text, args: args)
+                    let result = try await CommandRunner.shared.run(command: command, input: text, args: args, source: .api)
                     self.respond(conn, json: ["result": result])
                 } catch {
                     self.respond(conn, status: 500, json: ["error": error.localizedDescription])

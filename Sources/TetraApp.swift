@@ -59,6 +59,8 @@ struct TetraApp: App {
                 : hasError ? Self.warningIcon
                 : Self.menuBarIcon)
         }
+        Window("History", id: "history") { HistoryView() }
+            .defaultSize(width: 720, height: 480)
     }
 }
 
@@ -161,6 +163,7 @@ func runCommand(command: String, text: String) async {
 // MARK: - Menu Bar View
 
 struct MenuBarView: View {
+    @Environment(\.openWindow) private var openWindow
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var accessibilityGranted = Permissions.isGranted(.accessibility)
 
@@ -226,6 +229,10 @@ struct MenuBarView: View {
             NSWorkspace.shared.open(path)
         }
 
+        Button("Show History") {
+            NSApp.activate(ignoringOtherApps: true)
+            openWindow(id: "history")
+        }
 
         Toggle("Start at Login", isOn: $launchAtLogin)
             .onChange(of: launchAtLogin) { _, on in
