@@ -64,7 +64,8 @@ final class CommandRunner: Sendable {
             return try await PromptCommand.run(path: commandFile, input: input, args: args)
         }
 
-        let env = ProcessInfo.processInfo.environment
+        var env = ProcessInfo.processInfo.environment
+        if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
 
         let process = Process()
         if let (exec, processArgs) = interpreter(for: commandFile) {
