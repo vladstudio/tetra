@@ -247,7 +247,7 @@ struct MenuBarView: View {
         Divider()
 
         if status.serverError == nil {
-            Text("Server: localhost:\(status.port)")
+            Text(verbatim: "Server: localhost:\(status.port)")
         }
         Divider()
 
