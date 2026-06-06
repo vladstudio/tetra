@@ -6,10 +6,6 @@ A macOS menu bar app that transforms selected text — fix typos, change case, s
 
 ## Install
 
-[Download Tetra.zip](https://github.com/vladstudio/tetra/releases/latest/download/Tetra.zip), unzip, and move to Applications.
-
-Or via terminal:
-
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
 ```
