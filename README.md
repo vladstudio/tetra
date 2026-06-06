@@ -1,4 +1,4 @@
-# Tetra
+# Tetra: [te]xt [tra]nsormation
 
 <img src="tetra-1024.png" width="128" alt="App icon">
 
