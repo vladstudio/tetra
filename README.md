@@ -10,6 +10,14 @@ A macOS menu bar app that transforms selected text — fix typos, change case, s
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
 ```
 
+### Using with Sten?
+
+If you want AI transforms inside [Sten](https://github.com/vladstudio/sten) (voice-to-text), use the combined installer — it sets up both apps, seeds starter commands, and configures an LLM provider in one go:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/sten/main/install-with-tetra.sh)"
+```
+
 ## How it works
 
 Tetra lives in your menu bar. Select text in any app, open Tetra, pick a command from a list. Tetra grabs your selection, runs the command, and replaces the selection with the result.
@@ -91,7 +99,7 @@ Open `~/.config/tetra/config.json` and list the models you want under `llms`. Ea
 
 ```json
 {
-  "server": { "port": 73784 },
+  "server": { "port": 24100 },
   "llms": {
     "local_gemma": {
       "baseUrl": "http://localhost:11434/v1",
@@ -110,17 +118,17 @@ Local servers usually don't need an API key. Prompt files reference models by th
 
 ## HTTP API
 
-Tetra runs a small local server at `http://localhost:73784`. Call it from Shortcuts, scripts, webhooks — anything on your machine.
+Tetra runs a small local server at `http://localhost:24100`. Call it from Shortcuts, scripts, webhooks — anything on your machine.
 
 **List commands:**
 ```bash
-curl http://localhost:73784/commands
+curl http://localhost:24100/commands
 # ["Fix With AI", "Lowercase", "Trim", "Uppercase"]
 ```
 
 **Run a command:**
 ```bash
-curl -X POST http://localhost:73784/transform \
+curl -X POST http://localhost:24100/transform \
   -H "Content-Type: application/json" \
   -d '{"command": "Uppercase", "text": "hello"}'
 # {"result": "HELLO"}
@@ -128,7 +136,7 @@ curl -X POST http://localhost:73784/transform \
 
 **Pass extra values into a prompt** (they become `{{name}}` placeholders):
 ```bash
-curl -X POST http://localhost:73784/transform \
+curl -X POST http://localhost:24100/transform \
   -H "Content-Type: application/json" \
   -d '{"command": "Fix With AI", "text": "helo wrld", "args": {"context": "Dear colleague"}}'
 ```
