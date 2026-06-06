@@ -10,6 +10,12 @@ Commands can be simple scripts that receive text via stdin and output the result
 
 Requires macOS 15+. Built with Swift and SwiftUI.
 
+## Install
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
+```
+
 **Website:** https://apps.vlad.studio/tetra
 
 ## API
