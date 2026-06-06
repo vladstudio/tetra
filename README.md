@@ -1,6 +1,6 @@
 # Tetra
 
-<img src="tetra.png" width="128" alt="App icon">
+<img src="tetra-1024.png" width="128" alt="App icon">
 
 A macOS menu bar app that transforms selected text using custom commands.
 
