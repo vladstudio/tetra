@@ -2,77 +2,41 @@
 
 <img src="tetra-1024.png" width="128" alt="App icon">
 
-A macOS menu bar app that transforms selected text using custom commands.
+Tetra is a small macOS menu bar app that transforms selected text. Fix typos, change case, summarize, translate, write commit messages — anything you can describe.
 
-Pick a command from a searchable list, and the transformed text replaces your selection. Drop commands into `~/.config/tetra/commands/`.
+Select some text in any app, open Tetra from the menu bar, pick a command, and the result replaces your selection.
 
-Commands can be simple scripts that receive text via stdin and output the result to stdout, or `.prompt.md` files that Tetra runs through a configured OpenAI-compatible LLM. A local HTTP API (`localhost:73784`) is also available for programmatic access.
-
-Requires macOS 15+. Built with Swift and SwiftUI.
+Requires macOS 15 or newer. A native Swift and SwiftUI app.
 
 ## Install
+
+Paste this into Terminal:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
 ```
 
-**Website:** https://apps.vlad.studio/tetra
+## How it works
 
-## API
+Tetra lives in your menu bar. When you call it up:
 
-Tetra runs an HTTP server on `localhost:73784` for programmatic access.
+1. It copies the text you currently have selected in whatever app you're using.
+2. You pick a command from a searchable list.
+3. Tetra runs the command and replaces your selection with the result.
 
-**`GET /commands`** — list available commands:
-```bash
-curl http://localhost:73784/commands
-# ["Fix With AI", "Lowercase", "Trim", "Uppercase"]
-```
-
-**`POST /transform`** — run a command on text:
-```bash
-curl -X POST http://localhost:73784/transform \
-  -H "Content-Type: application/json" \
-  -d '{"command": "Uppercase", "text": "hello"}'
-# {"result": "HELLO"}
-```
-
-An optional `args` object passes named values to `.prompt.md` commands:
-```bash
-curl -X POST http://localhost:73784/transform \
-  -H "Content-Type: application/json" \
-  -d '{"command": "Fix With AI", "text": "helo wrld", "args": {"context": "Dear colleague"}}'
-```
-
-## Configuration
-
-Edit `~/.config/tetra/config.json`. The `llms` object defines named OpenAI-compatible model configurations. Prompt commands reference one of these names in frontmatter.
-
-```json
-{
-  "server": { "port": 73784 },
-  "llms": {
-    "local-gemma": {
-      "baseUrl": "http://localhost:11434/v1",
-      "model": "gemma3:4b"
-    },
-    "groq-llama": {
-      "baseUrl": "https://api.groq.com/openai/v1",
-      "apiKey": "gsk_...",
-      "model": "llama-3.3-70b-versatile"
-    }
-  }
-}
-```
-
-Only include the LLMs you use. Local Ollama-compatible endpoints usually do not need an API key.
+Commands live in `~/.config/tetra/commands/`. You add the ones you want — they're either small shell scripts or AI prompt files. Tetra also exposes an HTTP API if you'd like to drive it from other apps or scripts.
 
 ## Commands
 
-Drop scripts or prompt files into `~/.config/tetra/commands/`. For scripts, the filename minus extension becomes the command name. For prompt commands, `.prompt.md` is removed from the filename.
+A command is a tiny recipe: it takes text in and gives text back. Tetra ships with none by default — you pick the ones you need.
 
-### Local Scripts
+Drop files into `~/.config/tetra/commands/`. The filename becomes the command name. The file extension is stripped, so `Uppercase.sh` shows up as **Uppercase**, and `Fix With AI.prompt.md` shows up as **Fix With AI**.
 
-Scripts receive text via stdin and output the transformed text to stdout. Any executable language works; `.sh`, `.py`, `.rb`, and `.js` get a default interpreter.
+Need inspiration? The repo ships a [folder of ready-to-use examples](commands-examples/) — case conversions, wrapping, escaping, AI-powered translation and grammar fixes, and more. Copy any of them into your `commands/` folder and tweak as you like.
+
+### Shell scripts
+
+Any executable language works: bash, Python, Ruby, JavaScript, and so on. Files ending in `.sh`, `.py`, `.rb`, or `.js` get a sensible default interpreter, so you don't need a shebang line. The script reads the original text from standard input and prints the transformed text to standard output.
 
 `Uppercase.sh`:
 ```bash
@@ -86,9 +50,11 @@ tr '[:lower:]' '[:upper:]'
 sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 ```
 
-### Prompt Commands
+### AI prompts
 
-Prompt commands are `.prompt.md` files. Tetra renders `{{text}}` and any values from the API `args` object, then sends the prompt to the configured LLM.
+For anything trickier than simple text manipulation, write a `.prompt.md` file. Tetra sends the prompt to a language model (which you configure — see below) and replaces your selection with the model's reply.
+
+Inside the prompt, `{{text}}` is replaced with the selected text. You can also reference extra values passed in through the API as `{{name}}` placeholders (see the HTTP API section below).
 
 `Fix With AI.prompt.md`:
 ```text
@@ -127,4 +93,56 @@ Diff:
 {{text}}
 
 OUTPUT ONLY THE COMMIT MESSAGE.
+```
+
+## Connecting a language model
+
+AI prompt commands need a model to talk to. Tetra speaks the OpenAI API format, so anything compatible works — OpenAI itself, Groq, OpenRouter, local Ollama, LM Studio, and so on.
+
+Open `~/.config/tetra/config.json` and list the models you want to use under `llms`. Each one needs a name (you choose it), a base URL, and a model identifier. Add an `apiKey` if your provider requires one.
+
+```json
+{
+  "server": { "port": 73784 },
+  "llms": {
+    "local-gemma": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "gemma3:4b"
+    },
+    "groq-llama": {
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "apiKey": "gsk_...",
+      "model": "llama-3.3-70b-versatile"
+    }
+  }
+}
+```
+
+Only list the models you'll actually use. Local servers such as Ollama or LM Studio usually don't need an API key.
+
+Prompt files refer to these models by the name you picked (see the `llm: groq-llama` line in the examples above).
+
+## HTTP API
+
+Tetra runs a small local server at `http://localhost:73784`. You can call it from Shortcuts, other scripts, webhooks — anything on your machine.
+
+**List available commands:**
+```bash
+curl http://localhost:73784/commands
+# ["Fix With AI", "Lowercase", "Trim", "Uppercase"]
+```
+
+**Run a command on some text:**
+```bash
+curl -X POST http://localhost:73784/transform \
+  -H "Content-Type: application/json" \
+  -d '{"command": "Uppercase", "text": "hello"}'
+# {"result": "HELLO"}
+```
+
+**Pass extra values into a prompt command** (these become `{{name}}` placeholders in the prompt):
+```bash
+curl -X POST http://localhost:73784/transform \
+  -H "Content-Type: application/json" \
+  -d '{"command": "Fix With AI", "text": "helo wrld", "args": {"context": "Dear colleague"}}'
 ```
