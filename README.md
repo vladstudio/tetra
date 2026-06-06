@@ -10,7 +10,9 @@ Requires macOS 15 or newer. A native Swift and SwiftUI app.
 
 ## Install
 
-Paste this into Terminal:
+[Download Tetra.zip](https://github.com/vladstudio/tetra/releases/latest/download/Tetra.zip), unzip, and move to Applications.
+
+Or via terminal:
 
 ```sh
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
