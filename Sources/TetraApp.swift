@@ -172,7 +172,7 @@ struct MenuBarView: View {
         let status = AppStatus.shared
 
         if !accessibilityGranted {
-            Button("Grant Accessibility Permission...") {
+            Button("Grant Accessibility Permission") {
                 Permissions.openSettings(.accessibility)
             }
 
@@ -182,7 +182,7 @@ struct MenuBarView: View {
         if let err = status.configError {
             Section("Config Error") {
                 Text(err).font(.caption).foregroundStyle(.red)
-                Button("Open Config...") {
+                Button("Open Config") {
                     let path = ConfigDir.url(for: "tetra").appendingPathComponent("config.json")
                     NSWorkspace.shared.open(path)
                 }
@@ -205,7 +205,7 @@ struct MenuBarView: View {
 
         if CommandRunner.shared.listCommands().isEmpty {
             Text("No commands yet").foregroundStyle(.secondary)
-            Button("Create Sample Commands...") {
+            Button("Create Sample Commands") {
                 CommandRunner.shared.createSampleCommands()
             }
         } else if let running = CommandState.shared.runningCommand {
@@ -219,13 +219,13 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button("Open Commands Folder...") {
+        Button("Open Commands Folder") {
             let dir = CommandRunner.shared.commandsDir
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             NSWorkspace.shared.open(dir)
         }
 
-        Button("Open Config...") {
+        Button("Open Config") {
             let path = ConfigDir.url(for: "tetra").appendingPathComponent("config.json")
             NSWorkspace.shared.open(path)
         }
