@@ -72,6 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var activePort: UInt16 = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LoginItem.enableOnFirstLaunch()
         let config = ConfigManager.shared.config
 
         // Track the last non-Tetra frontmost app (seed with current)
@@ -235,6 +236,7 @@ struct MenuBarView: View {
         }
 
         Toggle("Start at Login", isOn: $launchAtLogin)
+            .onAppear { launchAtLogin = LoginItem.isEnabled }
             .onChange(of: launchAtLogin) { _, on in
                 if on { LoginItem.enable() } else { LoginItem.disable() }
                 launchAtLogin = LoginItem.isEnabled
