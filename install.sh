@@ -34,9 +34,6 @@ fi
 $SUDO rm -rf "$APP_PATH"
 $SUDO ditto "$TMP/$APP_NAME.app" "$APP_PATH"
 
-echo "Removing Gatekeeper quarantine flag"
-xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
-
 if [ "$APP_OPEN" = "1" ]; then
   open "$APP_PATH"
 fi

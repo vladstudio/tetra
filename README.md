@@ -2,7 +2,9 @@
 
 <img src="tetra-1024.png" width="128" alt="App icon">
 
-A macOS menu bar app that transforms selected text — fix typos, change case, summarize, translate, write commit messages, anything you can describe. Requires macOS 15+. Built with Swift.
+A macOS menu bar app that transforms selected text — fix typos, change case, summarize, translate, write commit messages, anything you can describe. Built with Swift.
+
+Requires macOS 15 (Sequoia) or later.
 
 ## Install
 
@@ -14,7 +16,7 @@ A macOS menu bar app that transforms selected text — fix typos, change case, s
 ```
 
 3. The app will install to /Applications and open automatically
-4. On first launch, Tetra will ask for **Accessibility** permission in System Settings (to grab text from other apps)
+4. On first launch, Tetra will ask for **Accessibility** access in System Settings — this is required to grab text from other apps
 
 ### Using with Sten?
 
