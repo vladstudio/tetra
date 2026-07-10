@@ -13,6 +13,9 @@ final class CommandPicker: PickerPanel<String> {
         onPick { [weak self] _, command in
             self?.runPicked(command)
         }
+        onEmptyPick { [weak self] query in
+            self?.runCustom(query)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -49,6 +52,31 @@ final class CommandPicker: PickerPanel<String> {
                 text = captured
             }
             await runCommand(command: command, text: text)
+        }
+    }
+
+    /// Empty-results fallback: capture the selected text in the active app,
+    /// prepend the typed query to it (separated by a blank line), and run the
+    /// hidden `Custom` command with the combined string as `{{text}}`.
+    /// Fails loudly if `Custom.prompt.md` does not exist.
+    private func runCustom(_ query: String) {
+        guard !query.isEmpty else { return }
+        let file = CommandRunner.shared.commandsDir
+            .appendingPathComponent(CommandRunner.customFileName)
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            NSSound.beep()
+            AppStatus.shared.lastError = "Custom command not found: \(file.path)"
+            return
+        }
+        AppDelegate.previousApp?.activate()
+        Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let captured = await ContextCapture.captureSelected(), !captured.isEmpty else {
+                NSSound.beep()
+                return
+            }
+            let text = query + "\n\n" + captured
+            await runCommand(command: "Custom", text: text)
         }
     }
 }

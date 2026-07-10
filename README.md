@@ -99,6 +99,10 @@ Diff:
 OUTPUT ONLY THE COMMIT MESSAGE.
 ```
 
+### Custom command
+
+Type something into the filter that matches no command and press Enter, and Tetra runs the **Custom** command. It grabs your selected text, prepends whatever you typed (separated by a blank line), and feeds the combined string to `~/.config/tetra/commands/Custom.prompt.md` as `{{text}}`. So your typed query acts as an inline instruction and the selection is the payload — e.g. type `translate to French`, select `hello world`, hit Enter, and the model receives `translate to French\n\nhello world`. `Custom` is hidden from the command list, so it never clutters the picker. If `Custom.prompt.md` does not exist, Tetra beeps and shows the expected path — create the file yourself to enable the fallback.
+
 ## Connecting a language model
 
 AI prompts need a model. Tetra speaks the OpenAI API format, so anything compatible works — OpenAI, Groq, OpenRouter, local Ollama, LM Studio, etc.

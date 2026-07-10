@@ -30,11 +30,16 @@ final class CommandRunner: Sendable {
     let commandsDir = ConfigDir.url(for: "tetra").appendingPathComponent("commands")
     private let activeCount = OSAllocatedUnfairLock(initialState: 0)
 
+    /// Hidden from the command list but runnable by name — the "custom" fallback
+    /// triggered when the picker has no matches and the user hits Enter.
+    static let customFileName = "Custom.prompt.md"
+
     func listCommands() -> [String] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: commandsDir, includingPropertiesForKeys: nil) else { return [] }
         let names = files
             .filter { !$0.lastPathComponent.hasPrefix(".") }
+            .filter { $0.lastPathComponent != Self.customFileName }
             .map { commandName(for: $0) }
         return Array(Set(names)).sorted()
     }
