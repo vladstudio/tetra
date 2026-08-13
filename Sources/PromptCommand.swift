@@ -122,10 +122,21 @@ enum PromptCommand {
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String else {
-            throw TetraError.llmFailed("response did not contain choices[0].message.content")
+              let message = choices.first?["message"] as? [String: Any] else {
+            let body = String(data: data, encoding: .utf8) ?? "<binary>"
+            throw TetraError.llmFailed("response had no choices[0].message: \(body.prefix(800))")
         }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        // content may be null for thinking models that emit only reasoning, or when
+        // generation is blocked (safety) / cut off. Fall back to reasoning_content, then
+        // surface finish_reason so the failure is diagnosable.
+        if let content = message["content"] as? String, !content.isEmpty {
+            return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let reasoning = message["reasoning_content"] as? String, !reasoning.isEmpty {
+            return reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let finishReason = choices.first?["finish_reason"] as? String ?? "unknown"
+        let body = String(data: data, encoding: .utf8) ?? "<binary>"
+        throw TetraError.llmFailed("empty content (finish_reason=\(finishReason)): \(body.prefix(800))")
     }
 }

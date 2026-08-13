@@ -45,11 +45,10 @@ final class CommandPicker: PickerPanel<String> {
                 text = precaptured
             } else {
                 try? await Task.sleep(nanoseconds: 200_000_000)
-                guard let captured = await ContextCapture.captureSelected(), !captured.isEmpty else {
-                    NSSound.beep()
-                    return
-                }
-                text = captured
+                // No selection is fine — run with empty input so output-only
+                // commands (e.g. "Random Emoji") can still paste a result.
+                let captured = await ContextCapture.captureSelected()
+                text = (captured?.isEmpty == false) ? captured! : ""
             }
             await runCommand(command: command, text: text)
         }

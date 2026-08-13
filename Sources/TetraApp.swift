@@ -150,7 +150,7 @@ func runCommand(command: String, text: String) async {
                 DispatchQueue.main.async { CommandState.shared.runningProcess = process }
             }
             guard !Task.isCancelled else { return }
-            TextInjector.inject(result)
+            if !result.isEmpty { TextInjector.inject(result) }
         } catch {
             guard !Task.isCancelled else { return }
             AppStatus.shared.lastError = error.localizedDescription
