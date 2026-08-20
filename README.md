@@ -8,15 +8,9 @@ Requires macOS 15 (Sequoia) or later.
 
 ## Install
 
-1. Open **Terminal** (press ⌘Space, type "Terminal", press Enter)
-2. Copy and paste this command, then press Enter:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/vladstudio/tetra/main/install.sh)"
-```
-
-3. The app will install to /Applications and open automatically
-4. On first launch, Tetra will ask for **Accessibility** access in System Settings — this is required to grab text from other apps
+1. Download [Tetra.zip](https://github.com/vladstudio/tetra/releases/latest/download/Tetra.zip)
+2. Unzip and drag `Tetra.app` to `/Applications`
+3. On first launch, Tetra will ask for **Accessibility** access in System Settings — this is required to grab text from other apps
 
 ### Using with Sten?
 
