@@ -12,7 +12,7 @@ let package = Package(
             name: "Tetra",
             dependencies: [.product(name: "MacAppKit", package: "app-kit")],
             path: "Sources",
-            resources: [.process("Resources")]
+            exclude: ["Resources"]
         )
     ]
 )

@@ -36,7 +36,7 @@ struct TetraApp: App {
     private static let warningIcon = loadIcon("WarningIcon")
 
     private static func loadIcon(_ name: String) -> NSImage {
-        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
            let img = NSImage(contentsOf: url)
         {
             img.size = NSSize(width: 18, height: 18)
