@@ -10,6 +10,13 @@ final class CommandPicker: PickerPanel<String> {
         super.init(title: "Commands", placeholder: "Search commands…",
                    searchKey: "CommandPicker.lastSearch",
                    appearance: NSAppearance(named: .darkAqua))
+        setFilter { query, commands in
+            let q = query.lowercased()
+            return commands.compactMap { c -> (String, Int)? in
+                Fuzzy.score(query: q, target: c.lowercased()).map { (c, $0) }
+            }
+            .sorted { $0.1 > $1.1 }.map { $0.0 }
+        }
         onPick { [weak self] _, command in
             self?.runPicked(command)
         }
