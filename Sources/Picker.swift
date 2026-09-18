@@ -39,8 +39,9 @@ final class CommandPicker: PickerPanel<String> {
         let commands = CommandRunner.shared.listCommands()
         guard !commands.isEmpty else { return }
 
-        inputSource = Self.detectInputSource()
-        switch inputSource {
+        let (source, text) = Self.detectInput()
+        inputSource = source
+        switch source {
         case .selection:
             title = "Transform selected text"
             setHint(nil)
@@ -51,40 +52,52 @@ final class CommandPicker: PickerPanel<String> {
             title = "Transform"
             setHint("Select some text or copy text to clipboard to transform it with Tetra.")
         }
+        if let text { title += ": " + Self.snippet(of: text) }
         show(items: commands)
     }
 
     // MARK: - Input detection (at open time, for the title/hint)
 
-    private static func detectInputSource() -> InputSource {
-        if let app = AppDelegate.previousApp, hasAXSelection(in: app) {
-            return .selection
+    private static func detectInput() -> (source: InputSource, text: String?) {
+        if let app = AppDelegate.previousApp, let text = axSelectedText(in: app) {
+            return (.selection, text)
         }
         // Fallback disabled: selection-only mode — the old behavior.
-        guard ConfigManager.shared.config.clipboardFallback else { return .selection }
-        return clipboardText() != nil ? .clipboard : .empty
+        guard ConfigManager.shared.config.clipboardFallback else { return (.selection, nil) }
+        guard let text = clipboardText() else { return (.empty, nil) }
+        return (.clipboard, text)
     }
 
-    /// AX check for non-empty selected text on the focused element of `app`.
-    /// Works on background apps — no keystrokes, no focus changes. Apps that
-    /// don't expose the attribute are indistinguishable from "no selection"
-    /// here; the Cmd+C probe at pick time still finds their selection.
-    private static func hasAXSelection(in app: NSRunningApplication) -> Bool {
+    /// Selected text on the focused element of `app`, or nil when there is
+    /// none (whitespace-only counts as none). Works on background apps — no
+    /// keystrokes, no focus changes. Apps that don't expose the attribute are
+    /// indistinguishable from "no selection" here; the Cmd+C probe at pick
+    /// time still finds their selection.
+    private static func axSelectedText(in app: NSRunningApplication) -> String? {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         var focusedRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success else { return false }
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success else { return nil }
         let el = focusedRef as! AXUIElement
         var selRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, kAXSelectedTextAttribute as CFString, &selRef) == .success,
               let text = selRef as? String,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        return true
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
     }
 
     /// The clipboard's text, or nil if it holds none (or only whitespace).
     private static func clipboardText() -> String? {
         guard let text = NSPasteboard.general.string(forType: .string) else { return nil }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
+    /// One-line preview for the title: newlines and runs of whitespace
+    /// flattened to single spaces, ellipsis when cut short.
+    private static func snippet(of text: String) -> String {
+        let flat = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        guard flat.count > 40 else { return flat }
+        return String(flat.prefix(40)) + "…"
     }
 
     // MARK: - Running
