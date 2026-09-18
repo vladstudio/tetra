@@ -4,10 +4,11 @@ import MacAppKit
 @MainActor
 final class CommandPicker: PickerPanel<String> {
     static let shared = CommandPicker()
-    private var capturedText: String?
+
+    private enum InputSource { case selection, clipboard, empty }
 
     init() {
-        super.init(title: "Commands", placeholder: "Search commands…",
+        super.init(title: "Transform", placeholder: "Search commands…",
                    searchKey: "CommandPicker.lastSearch",
                    appearance: NSAppearance(named: .darkAqua))
         setFilter { query, commands in
@@ -32,9 +33,20 @@ final class CommandPicker: PickerPanel<String> {
             Permissions.openSettings(.accessibility)
             return
         }
-        capturedText = nil
         let commands = CommandRunner.shared.listCommands()
         guard !commands.isEmpty else { return }
+
+        switch Self.detectInputSource() {
+        case .selection:
+            title = "Transform selected text"
+            setHint(nil)
+        case .clipboard:
+            title = "Transform and paste"
+            setHint(nil)
+        case .empty:
+            title = "Transform"
+            setHint("Select some text or copy text to clipboard to transform it with Tetra.")
+        }
         show(items: commands)
     }
 
@@ -43,19 +55,51 @@ final class CommandPicker: PickerPanel<String> {
         showFromMenu()
     }
 
+    // MARK: - Input detection (at open time, for the title/hint)
+
+    private static func detectInputSource() -> InputSource {
+        if let app = AppDelegate.previousApp, hasAXSelection(in: app) {
+            return .selection
+        }
+        // Fallback disabled: selection-only mode — the old behavior.
+        guard ConfigManager.shared.config.clipboardFallback else { return .selection }
+        return clipboardText() != nil ? .clipboard : .empty
+    }
+
+    /// AX check for non-empty selected text on the focused element of `app`.
+    /// Works on background apps — no keystrokes, no focus changes. Apps that
+    /// don't expose the attribute are indistinguishable from "no selection"
+    /// here; the Cmd+C probe at pick time still finds their selection.
+    private static func hasAXSelection(in app: NSRunningApplication) -> Bool {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success else { return false }
+        let el = focusedRef as! AXUIElement
+        var selRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXSelectedTextAttribute as CFString, &selRef) == .success,
+              let text = selRef as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return true
+    }
+
+    /// The clipboard's text, or nil if it holds none (or only whitespace).
+    private static func clipboardText() -> String? {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
+    // MARK: - Running
+
     private func runPicked(_ command: String) {
-        let precaptured = capturedText
         AppDelegate.previousApp?.activate()
         Task {
-            let text: String
-            if let precaptured, !precaptured.isEmpty {
-                text = precaptured
-            } else {
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                // No selection is fine — run with empty input so output-only
-                // commands (e.g. "Random Emoji") can still paste a result.
-                let captured = await ContextCapture.captureSelected()
-                text = (captured?.isEmpty == false) ? captured! : ""
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Capture order: selection, then clipboard (if enabled), then empty
+            // input so output-only commands (e.g. "Random Emoji") still work.
+            var text = await ContextCapture.captureSelected() ?? ""
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               ConfigManager.shared.config.clipboardFallback {
+                text = Self.clipboardText() ?? ""
             }
             await runCommand(command: command, text: text)
         }
@@ -64,6 +108,7 @@ final class CommandPicker: PickerPanel<String> {
     /// Empty-results fallback: capture the selected text in the active app,
     /// prepend the typed query to it (separated by a blank line), and run the
     /// hidden `Custom` command with the combined string as `{{text}}`.
+    /// Falls back to the clipboard when nothing is selected.
     /// Fails loudly if `Custom.prompt.md` does not exist.
     private func runCustom(_ query: String) {
         guard !query.isEmpty else { return }
@@ -77,7 +122,12 @@ final class CommandPicker: PickerPanel<String> {
         AppDelegate.previousApp?.activate()
         Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
-            guard let captured = await ContextCapture.captureSelected(), !captured.isEmpty else {
+            var captured = await ContextCapture.captureSelected() ?? ""
+            if captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               ConfigManager.shared.config.clipboardFallback {
+                captured = Self.clipboardText() ?? ""
+            }
+            guard !captured.isEmpty else {
                 NSSound.beep()
                 return
             }

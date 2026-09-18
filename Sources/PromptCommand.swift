@@ -23,7 +23,14 @@ enum PromptCommand {
         var values = args
         values["text"] = input
         let prompt = render(parsed.body, values: values)
-        return try await complete(llm: llm, prompt: prompt, temperature: parsed.metadata.temperature)
+        do {
+            return try await complete(llm: llm, prompt: prompt, temperature: parsed.metadata.temperature)
+        } catch TetraError.llmFailed(let message) where message.contains("empty content") {
+            // Flash-class models (Gemini lite especially) intermittently return
+            // an empty completion with finish_reason=stop. One quiet retry.
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            return try await complete(llm: llm, prompt: prompt, temperature: parsed.metadata.temperature)
+        }
     }
 
     private static func parse(_ raw: String) -> (metadata: Metadata, body: String) {
@@ -126,17 +133,34 @@ enum PromptCommand {
             let body = String(data: data, encoding: .utf8) ?? "<binary>"
             throw TetraError.llmFailed("response had no choices[0].message: \(body.prefix(800))")
         }
-        // content may be null for thinking models that emit only reasoning, or when
-        // generation is blocked (safety) / cut off. Fall back to reasoning_content, then
-        // surface finish_reason so the failure is diagnosable.
-        if let content = message["content"] as? String, !content.isEmpty {
-            return content.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        if let reasoning = message["reasoning_content"] as? String, !reasoning.isEmpty {
-            return reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+        // content is usually a string, but some OpenAI-compatible endpoints
+        // return an array of parts, and thinking models may only fill
+        // reasoning_content. Surface everything else (finish_reason, model,
+        // prompt size, response snippet) so failures are diagnosable.
+        if let text = contentText(message) {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let finishReason = choices.first?["finish_reason"] as? String ?? "unknown"
         let body = String(data: data, encoding: .utf8) ?? "<binary>"
-        throw TetraError.llmFailed("empty content (finish_reason=\(finishReason)): \(body.prefix(800))")
+        let preview = prompt.prefix(200).replacingOccurrences(of: "\n", with: " ")
+        throw TetraError.llmFailed(
+            "\(llm.model) returned empty content (finish_reason=\(finishReason)); " +
+            "prompt \(prompt.count) chars, starts with: \"\(preview)\"; " +
+            "response: \(body.prefix(600))")
+    }
+
+    /// Extracts the reply text from an OpenAI-format message: `content` as a
+    /// string, `content` as an array of parts (`[{"type":"text","text":…}]`),
+    /// or `reasoning_content` from thinking models.
+    private static func contentText(_ message: [String: Any]) -> String? {
+        if let s = message["content"] as? String, !s.isEmpty { return s }
+        if let parts = message["content"] as? [[String: Any]] {
+            let joined = parts.compactMap { $0["text"] as? String }.joined(separator: "")
+            if !joined.isEmpty { return joined }
+        }
+        if let reasoning = message["reasoning_content"] as? String, !reasoning.isEmpty {
+            return reasoning
+        }
+        return nil
     }
 }

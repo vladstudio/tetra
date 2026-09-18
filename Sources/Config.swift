@@ -4,16 +4,21 @@ import MacAppKit
 struct TetraConfig: Codable, Sendable {
     var server: ServerConfig = ServerConfig()
     var llms: [String: LLMConfig] = [:]
+    /// Transform clipboard text when nothing is selected.
+    var clipboardFallback: Bool = true
 
-    init(server: ServerConfig = ServerConfig(), llms: [String: LLMConfig] = [:]) {
+    init(server: ServerConfig = ServerConfig(), llms: [String: LLMConfig] = [:],
+         clipboardFallback: Bool = true) {
         self.server = server
         self.llms = llms
+        self.clipboardFallback = clipboardFallback
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         server = try container.decodeIfPresent(ServerConfig.self, forKey: .server) ?? ServerConfig()
         llms = try container.decodeIfPresent([String: LLMConfig].self, forKey: .llms) ?? [:]
+        clipboardFallback = try container.decodeIfPresent(Bool.self, forKey: .clipboardFallback) ?? true
     }
 }
 
