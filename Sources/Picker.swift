@@ -6,6 +6,9 @@ final class CommandPicker: PickerPanel<String> {
     static let shared = CommandPicker()
 
     private enum InputSource { case selection, clipboard, empty }
+    /// Decided when the picker opens and honored at pick time: the clipboard
+    /// is never used as input when a selection was seen.
+    private var inputSource: InputSource = .empty
 
     init() {
         super.init(title: "Transform", placeholder: "Search commands…",
@@ -19,7 +22,7 @@ final class CommandPicker: PickerPanel<String> {
             .sorted { $0.1 > $1.1 }.map { $0.0 }
         }
         onPick { [weak self] _, command in
-            self?.runPicked(command)
+            self?.run(command: command, prefix: nil)
         }
         onEmptyPick { [weak self] query in
             self?.runCustom(query)
@@ -36,7 +39,8 @@ final class CommandPicker: PickerPanel<String> {
         let commands = CommandRunner.shared.listCommands()
         guard !commands.isEmpty else { return }
 
-        switch Self.detectInputSource() {
+        inputSource = Self.detectInputSource()
+        switch inputSource {
         case .selection:
             title = "Transform selected text"
             setHint(nil)
@@ -48,11 +52,6 @@ final class CommandPicker: PickerPanel<String> {
             setHint("Select some text or copy text to clipboard to transform it with Tetra.")
         }
         show(items: commands)
-    }
-
-    func show() {
-        guard !isVisible else { return }
-        showFromMenu()
     }
 
     // MARK: - Input detection (at open time, for the title/hint)
@@ -90,26 +89,36 @@ final class CommandPicker: PickerPanel<String> {
 
     // MARK: - Running
 
-    private func runPicked(_ command: String) {
+    /// Runs `command` on the captured input. Priority is strict: selected text
+    /// first; the clipboard is only consulted when the capture finds no
+    /// selection — and never when the picker saw one at open time, even if the
+    /// recapture then fails. `prefix` (the Custom command) prepends the typed
+    /// query to the captured text.
+    private func run(command: String, prefix: String?) {
         AppDelegate.previousApp?.activate()
         Task {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            // Capture order: selection, then clipboard (if enabled), then empty
-            // input so output-only commands (e.g. "Random Emoji") still work.
+            await Self.waitUntilFrontmost()
             var text = await ContextCapture.captureSelected() ?? ""
             if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               inputSource != .selection,
                ConfigManager.shared.config.clipboardFallback {
                 text = Self.clipboardText() ?? ""
+            }
+            if let prefix {
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    NSSound.beep()
+                    return
+                }
+                text = prefix + "\n\n" + text
+            } else if text.isEmpty, inputSource == .selection {
+                NSSound.beep() // saw a selection at open but couldn't recapture it
             }
             await runCommand(command: command, text: text)
         }
     }
 
-    /// Empty-results fallback: capture the selected text in the active app,
-    /// prepend the typed query to it (separated by a blank line), and run the
-    /// hidden `Custom` command with the combined string as `{{text}}`.
-    /// Falls back to the clipboard when nothing is selected.
-    /// Fails loudly if `Custom.prompt.md` does not exist.
+    /// Custom fallback: the typed query acts as an inline instruction and the
+    /// selection is the payload, fed to the hidden `Custom.prompt.md`.
     private func runCustom(_ query: String) {
         guard !query.isEmpty else { return }
         let file = CommandRunner.shared.commandsDir
@@ -119,20 +128,19 @@ final class CommandPicker: PickerPanel<String> {
             AppStatus.shared.lastError = "Custom command not found: \(file.path)"
             return
         }
-        AppDelegate.previousApp?.activate()
-        Task {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            var captured = await ContextCapture.captureSelected() ?? ""
-            if captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               ConfigManager.shared.config.clipboardFallback {
-                captured = Self.clipboardText() ?? ""
-            }
-            guard !captured.isEmpty else {
-                NSSound.beep()
-                return
-            }
-            let text = query + "\n\n" + captured
-            await runCommand(command: "Custom", text: text)
+        run(command: "Custom", prefix: query)
+    }
+
+    /// `activate()` is async and cooperative — capturing too early misses the
+    /// AX selection and fires the Cmd+C probe into the void, which let the old
+    /// clipboard win over a real selection. Poll until the target app is
+    /// frontmost, bounded so a failed activation costs half a second at most.
+    private static func waitUntilFrontmost() async {
+        guard let app = AppDelegate.previousApp else { return }
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier {
+            try? await Task.sleep(nanoseconds: 25_000_000)
         }
     }
 }
