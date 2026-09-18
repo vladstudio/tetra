@@ -26,17 +26,7 @@ Tetra lives in your menu bar. Select text in any app, open Tetra, pick a command
 
 ### Nothing selected? Tetra uses the clipboard
 
-If no text is selected when you open Tetra but your clipboard holds some, the picker switches to **Transform and paste**: pick a command and Tetra transforms the clipboard text, then types the result at your cursor in the frontmost app. Your clipboard keeps the original, so you can transform the same text again somewhere else.
-
-The picker title tells you what will happen — **Transform selected text** when there's a selection, **Transform and paste** when the clipboard will be used. If there's neither, Tetra says so.
-
-Prefer the old behavior? Disable it in `~/.config/tetra/config.json`:
-
-```json
-{
-  "clipboardFallback": false
-}
-```
+No selection but text in the clipboard? The title shows **Transform and paste: …** — pick a command and Tetra transforms the clipboard text at your cursor (your clipboard keeps the original). Disable with `"clipboardFallback": false` in `config.json`.
 
 Commands live in `~/.config/tetra/commands/`. They're either small shell scripts or AI prompt files. An HTTP API is also available for driving Tetra from other apps and scripts.
 
