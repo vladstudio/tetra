@@ -5,7 +5,7 @@ import MacAppKit
 final class CommandPicker: PickerPanel<String> {
     static let shared = CommandPicker()
 
-    private enum InputSource { case selection, clipboard, empty }
+    private enum InputSource { case selection, clipboard, empty, unknown }
     /// Decided when the picker opens and honored at pick time: the clipboard
     /// is never used as input when a selection was seen.
     private var inputSource: InputSource = .empty
@@ -39,7 +39,41 @@ final class CommandPicker: PickerPanel<String> {
         let commands = CommandRunner.shared.listCommands()
         guard !commands.isEmpty else { return }
 
-        let (source, text) = Self.detectInput()
+        // AX answers synchronously for most apps. AX-blind ones (VS Code,
+        // Electron, browsers) expose nothing, so start from an honest
+        // "unknown" and refine with a pid-targeted copy-probe moments after
+        // the panel shows — no frontmost race, no delay before showing.
+        if let app = AppDelegate.previousApp, let text = Self.axSelectedText(in: app) {
+            decide(.selection, text)
+        } else if let app = AppDelegate.previousApp {
+            decide(.unknown, nil)
+            Task { [weak self] in
+                let found = await ContextCapture.probeSelection(in: app)
+                guard let self, self.isVisible else { return }
+                if let found {
+                    self.decide(.selection, found)
+                } else {
+                    let (source, text) = Self.withoutSelection()
+                    self.decide(source, text)
+                }
+            }
+        } else {
+            let (source, text) = Self.withoutSelection()
+            decide(source, text)
+        }
+        show(items: commands)
+    }
+
+    /// State when no selection was found: clipboard (if enabled and
+    /// non-empty), else "nothing" — or selection-only mode when the fallback
+    /// is disabled (the old behavior).
+    private static func withoutSelection() -> (InputSource, String?) {
+        guard ConfigManager.shared.config.clipboardFallback else { return (.selection, nil) }
+        if let text = clipboardText() { return (.clipboard, text) }
+        return (.empty, nil)
+    }
+
+    private func decide(_ source: InputSource, _ text: String?) {
         inputSource = source
         switch source {
         case .selection:
@@ -51,21 +85,11 @@ final class CommandPicker: PickerPanel<String> {
         case .empty:
             title = "Transform"
             setHint("Select some text or copy text to clipboard to transform it with Tetra.")
+        case .unknown:
+            title = "Transform"
+            setHint(nil)
         }
         if let text { title += ": " + Self.snippet(of: text) }
-        show(items: commands)
-    }
-
-    // MARK: - Input detection (at open time, for the title/hint)
-
-    private static func detectInput() -> (source: InputSource, text: String?) {
-        if let app = AppDelegate.previousApp, let text = axSelectedText(in: app) {
-            return (.selection, text)
-        }
-        // Fallback disabled: selection-only mode — the old behavior.
-        guard ConfigManager.shared.config.clipboardFallback else { return (.selection, nil) }
-        guard let text = clipboardText() else { return (.empty, nil) }
-        return (.clipboard, text)
     }
 
     /// Selected text on the focused element of `app`, or nil when there is
